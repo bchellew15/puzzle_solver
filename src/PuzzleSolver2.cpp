@@ -5,6 +5,9 @@
 #include "PuzzleSolver2.h"
 using namespace std;
 
+#include <opencv4/opencv2/opencv.hpp>
+using namespace cv;
+
 //try printing out piece 1 and its right neighbor.
 //matching piece: will it help to return pointer as a reference param?
 //passing an array as a call-by reference?
@@ -171,20 +174,6 @@ int main() {
 	}
 
 	return 0;
-}
-
-Point::Point(int xArg, int yArg) {
-	x = xArg;
-	y = yArg;
-}
-
-Point::Point() {
-	x = 0;
-	y = 0;
-}
-
-void Point::print() {
-	cout << "(" << x << ", " << y << ")";
 }
 
 void PuzzlePiece::take_data() {
