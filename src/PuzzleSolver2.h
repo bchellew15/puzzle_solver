@@ -8,18 +8,6 @@
 #ifndef PUZZLESOLVER2_H_
 #define PUZZLESOLVER2_H_
 
-class Point {
-	int x;
-	int y;
-
-public:
-	//constructors:
-	Point();
-	Point(int xArg, int yArg);
-
-	void print();
-};
-
 class EdgeOfPiece {
 	//an edge is a collection of points
 	//should be standardized so that they start at (0,0) and end at (100,0)
