@@ -5,10 +5,9 @@
 #include "PuzzleSolver2.h"
 using namespace std;
 
-#include <opencv4/opencv2/opencv.hpp>
+#include <opencv2/opencv.hpp>
 using namespace cv;
 
-//try printing out piece 1 and its right neighbor.
 //matching piece: will it help to return pointer as a reference param?
 //passing an array as a call-by reference?
 //match isn't returning correctly
@@ -31,28 +30,36 @@ using namespace cv;
 
 int main() {
 
-	//load the pieces using a dynamic array:
+	// get number of pieces.
+	// todo: count the pieces in the folder
 	string sizeStr;
 	cout << "How many pieces?" << endl;
 	cin >> sizeStr;
 	int size = stoi(sizeStr);
 	cout << size << " pieces" << endl;
 
-	// one of the * is bc array of pointers. the other is bc creating dynamic array.
-	// but it didn't work!
-	// PuzzlePiece **pieces = new PuzzlePiece*[size];
+	// load images
+	// todo: error handling for if file doesn't exist
+	Mat images[size];
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Image_Files/Piece";
+	for( int i = 0; i < size; i++) {
+		string filename = dir + to_string(i+1) + ".jpeg";
+		images[i] = imread(filename);
+	}
+
+	// try displaying the pieces
+	namedWindow("temp");
+	imshow("temp", images[0]);
+	waitKey(0);
+	destroyWindow("temp");
+
+	// end here for now
+	return 0;
 
 	// previous code to create array of pointers then initialize each element:
 	PuzzlePiece *pieces[size]; //create an array of pointers
 	for(int i = 0; i < size; i++) {
 		pieces[i] = new PuzzlePiece;
-	}
-
-	//take input:
-	for(int i = 0; i < size; i++) {
-			cout << "Piece " << i+1 << ":" << endl;
-			pieces[i]->take_data();
-			pieces[i]->number = i+1;
 	}
 
 	cout<<"Loaded!" << endl;
