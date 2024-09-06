@@ -2,11 +2,12 @@
 #include <fstream>
 #include <string>
 #include <iomanip> //for setw(n)
-#include "PuzzleSolver2.h"
 using namespace std;
 
 #include <opencv2/opencv.hpp>
 using namespace cv;
+
+#include "PuzzleSolver2.h"
 
 //matching piece: will it help to return pointer as a reference param?
 //passing an array as a call-by reference?
@@ -47,35 +48,34 @@ int main() {
 		images[i] = imread(filename);
 	}
 
-	// try displaying the pieces
+	// try displaying a piece
 	namedWindow("temp");
 	imshow("temp", images[0]);
 	waitKey(0);
 	destroyWindow("temp");
 
+	PuzzlePiece pieces[size];
+	pieces[0].img = images[0];
+	pieces[0].process();
+
 	// end here for now
 	return 0;
-
-	// previous code to create array of pointers then initialize each element:
-	PuzzlePiece *pieces[size]; //create an array of pointers
-	for(int i = 0; i < size; i++) {
-		pieces[i] = new PuzzlePiece;
-	}
 
 	cout<<"Loaded!" << endl;
 
 	//find a corner:
 	int firstCornerIndex = 0;
-	while(firstCornerIndex < size && !((pieces[firstCornerIndex])->isCorner())) {
+	while(firstCornerIndex < size && !((pieces[firstCornerIndex]).isCorner())) {
 		firstCornerIndex++;
 	}
+	pieces[firstCornerIndex].isConnected = true;
 	//firstCornerIndex is now the index of a corner
 
 	//cout << "first corner is " << firstCornerIndex << endl;
 
 	//set downIndex and rightIndex:
-	pieces[firstCornerIndex]->rightIndex = pieces[firstCornerIndex]->firstConnection();
-	pieces[firstCornerIndex]->downIndex = PuzzlePiece::nextIndex(pieces[firstCornerIndex]->rightIndex);
+	pieces[firstCornerIndex].rightIndex = pieces[firstCornerIndex].firstConnection();
+	pieces[firstCornerIndex].downIndex = PuzzlePiece::nextIndex(pieces[firstCornerIndex].rightIndex);
 
 	//cout << "right index is " << pieces[firstCornerIndex]->rightIndex << endl;
 	//cout << "down index is " << pieces[firstCornerIndex]->downIndex << endl;
@@ -85,7 +85,7 @@ int main() {
 	cout << "starting matching" << endl;
 
 	//loop the cursor through the other rows:
-	cursor = pieces[firstCornerIndex];
+	cursor = &(pieces[firstCornerIndex]);
 	while(cursor != NULL) {
 		//look for a matching piece and set its orientation:
 
@@ -162,7 +162,7 @@ int main() {
 	*/
 
 	//print:
-	cursor = pieces[firstCornerIndex];
+	cursor = &(pieces[firstCornerIndex]);
 	while(cursor != NULL) {
 
 		//start another loop that goes horizontal, with a subCursor
@@ -183,20 +183,55 @@ int main() {
 	return 0;
 }
 
-void PuzzlePiece::take_data() {
-	cout << "Enter the 4 strings, in clockwise order, pressing enter after each one.\n"
-			<< "Type x for any outside edges."<< endl;
-	string var1; string var2; string var3; string var4;
-	cin >> var1 >> var2 >> var3 >> var4;
-
-	edges[0].setId(var1);
-	edges[1].setId(var2);
-	edges[2].setId(var3);
-	edges[3].setId(var4);
-}
-
 void EdgeOfPiece::setId(string str) {
 	id_string = str;
+}
+
+void PuzzlePiece::process() {
+	// check that the image is valid
+
+	Mat grey;
+	cvtColor(img, grey, COLOR_BGR2GRAY); // imread stores as BGR
+
+	namedWindow("grey");
+	imshow("grey", grey);
+	waitKey(0);
+
+	// threshold computed for now by looking at histogram in python
+	// could compute the threshold by looking at histogram dropoff
+	threshold(grey, grey, 30, 255, THRESH_BINARY);
+
+	imshow("grey", grey);
+	waitKey(0);
+
+	// cout << "var type: " << grey.type() << endl;
+
+	vector<vector<Point>> contours;
+	// todo: try chain_approx_simple
+	findContours(grey, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+
+	// todo: verify that # contours is > 0
+
+	// choose the biggest contour
+	vector<Point> outline = contours[0];
+	int maxSize = contours[0].size();
+	for(int i = 1; i < contours.size(); i++) {
+		if(contours[i].size() > maxSize) {
+			maxSize = contours[i].size();
+			outline = contours[i];
+		}
+	}
+
+	contours.clear();
+	contours.push_back(outline);
+
+	// display the outline
+	Scalar color(255, 0, 0); // red
+	drawContours(img, contours, 0, color, 5);
+	imshow("grey", img);
+	waitKey(0);
+
+	destroyWindow("grey");
 }
 
 //returns true if 2 or less edges
@@ -240,14 +275,14 @@ int PuzzlePiece::matchingEdgeIndex(string s) {
 	return -1; //no match found
 }
 
-PuzzlePiece* PuzzlePiece::match(int edgeIndex, PuzzlePiece *pieceArray[], int pieceArraySize) {
+PuzzlePiece* PuzzlePiece::match(int edgeIndex, PuzzlePiece pieceArray[], int pieceArraySize) {
 	//search through edges to find a match
 	for(int k = 0; k < pieceArraySize; k++) {
 		for(int i = 0; i < 4; i++) {
 			//second condition is to make sure it's not the same piece. re-write in a more readable way.
 			// (note: should just start this function by checking if "edgeIndex" refers to an edge.)
-			if ( pieceArray[k]->edges[i].id_string != "x" && pieceArray[k]->edges[i].id_string == edges[edgeIndex].id_string && pieceArray[k]->number != number ) {
-				PuzzlePiece *temp = pieceArray[k];
+			if ( pieceArray[k].edges[i].id_string != "x" && pieceArray[k].edges[i].id_string == edges[edgeIndex].id_string && pieceArray[k].number != number ) {
+				PuzzlePiece *temp = &(pieceArray[k]);
 				// cout << pieceArray[k]->edges[i].id_string << " from piece " << pieceArray[k]->number << " matches " << edges[edgeIndex].id_string << " from piece " << number << endl;
 				return temp;
 			}
