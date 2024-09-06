@@ -24,6 +24,7 @@ public:
 
 class PuzzlePiece {
 public:
+	Mat img;
 	EdgeOfPiece edges[4];  //edges should be in clockwise order
 	PuzzlePiece *leftNeighbor;
 	PuzzlePiece *rightNeighbor;
@@ -32,6 +33,9 @@ public:
 	int number; //the number of the piece
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	int downIndex;
+	bool isConnected = false; // whether this piece has been connected to the puzzle
+
+	void process(); // process the image and get edge shapes
 	bool isCorner();
 	int countEdges(); //returns number of edges on the piece. 2 for corner, 1 for edge
 	//bool isEdge();  //returns true for corners
@@ -44,10 +48,7 @@ public:
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
 	//if no match, returns NULL
-	PuzzlePiece* match(int edgeIndex, PuzzlePiece *pieceArray[], int pieceArraySize); //finds the matching piece
-
-	//asks for 4 strings from the user. Enters these as edges' id_strings.
-	void take_data();
+	PuzzlePiece* match(int edgeIndex, PuzzlePiece pieceArray[], int pieceArraySize); //finds the matching piece
 
 	//constructors:
 	//PuzzlePiece();
