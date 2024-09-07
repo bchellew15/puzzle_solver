@@ -63,6 +63,7 @@ int main() {
 	// end here for now
 	return 0;
 
+	/*
 	cout<<"Loaded!" << endl;
 
 	//find a corner:
@@ -151,6 +152,7 @@ int main() {
 	}
 
 	cout << "done matching" << endl;
+	*/
 
 	/*if(pieces[firstCornerIndex]->downNeighbor == NULL)
 		cout << "DOWN IS NULL";
@@ -163,6 +165,7 @@ int main() {
 			cout << "RIGHT IS WORKING";
 	*/
 
+	/*
 	//print:
 	cursor = &(pieces[firstCornerIndex]);
 	while(cursor != NULL) {
@@ -181,12 +184,9 @@ int main() {
 		//still works if NULL
 		cursor = cursor->downNeighbor;
 	}
+	*/
 
 	return 0;
-}
-
-void EdgeOfPiece::setId(string str) {
-	id_string = str;
 }
 
 // todo: break this into steps. first get the piece border, then split into chunks
@@ -194,7 +194,8 @@ void PuzzlePiece::process() {
 	// check that the image is valid
 
 	Mat grey;
-	cvtColor(img, grey, COLOR_BGR2GRAY); // imread stores as BGR
+	Mat img_copy = img.clone();
+	cvtColor(img_copy, grey, COLOR_BGR2GRAY); // imread stores as BGR
 
 	namedWindow("grey");
 	imshow("grey", grey);
@@ -235,14 +236,16 @@ void PuzzlePiece::process() {
 	// display the outline
 	Scalar blue(255, 0, 0);
 	Scalar red(0, 0, 255);
-	drawContours(img, contours, -1, blue, 5);
-	imshow("grey", img);
+	Scalar green(0, 255, 0);
+	Scalar purple(128, 0, 128);
+	drawContours(img_copy, contours, -1, blue, 5);
+	imshow("grey", img_copy);
 	waitKey(0);
 
 	// bounding box
 	Rect boundingBox = boundingRect(outline);
-	rectangle(img, boundingBox.tl(), boundingBox.br(), blue, 5);
-	imshow("grey", img);
+	rectangle(img_copy, boundingBox.tl(), boundingBox.br(), blue, 5);
+	imshow("grey", img_copy);
 	waitKey(0);
 
 	//decrease the bounding box to get the "core" rectangle of the piece
@@ -285,13 +288,73 @@ void PuzzlePiece::process() {
 	// for these pieces in particular, don't need to check bottom and left.
 
 	// show core
-	rectangle(img, core.tl(), core.br(), red, 5);
-	imshow("grey", img);
+	rectangle(img_copy, core.tl(), core.br(), red, 5);
+	imshow("grey", img_copy);
 	waitKey(0);
+
+	cout << "num points: " << outline.size() << endl;
 
 	// find closest points to each of the corners of the core
 	// (future: identify corners on the contour and find the closest corner)
+	int tl_index = 0, tr_index = 0, bl_index = 0, br_index = 0;
+	cout << "starting value: " << tr_index << endl;
+	double tl_mindist = 1000, tr_mindist = 1000, bl_mindist = 1000, br_mindist = 1000; // must be better default
+	for(int i = 0; i < outline.size(); i++) {
 
+		cout << "i: " << i << endl;
+
+		double tl_dist = norm(core.tl() - outline[i]);
+		double tr_dist = norm(core.tl() + Point(core.width, 0) - outline[i]);
+		cout << "tr dist: " << tr_dist << endl;
+		double bl_dist = norm(core.br() + Point(-(core.width), 0) - outline[i]);
+		double br_dist = norm(core.br() - outline[i]);
+
+		if (tl_dist < tl_mindist) {
+			tl_mindist = tl_dist;
+			tl_index = i;
+		}
+		if (tr_dist < tr_mindist) {
+			tr_mindist = tr_dist;
+			tr_index = i;
+			cout << "new tr index: " << tr_index << endl;
+		}
+		if (bl_dist < bl_mindist) {
+			bl_mindist = bl_dist;
+			bl_index = i;
+		}
+		if (br_dist < br_mindist) {
+			br_mindist = br_dist;
+			br_index = i;
+		}
+	}
+
+	cout << "closest indices: " << to_string(tl_index) << " " << to_string(tr_index) << " " << to_string(bl_index) << " " << to_string(br_index) << endl;
+
+	// make this a function : constructEdge(start_index, end_index, vector)
+	// end index needs the +1?
+	// better to pass outline by reference? I don't think I'm passing the data anyway.
+	// what if the ordering of the pieces is counter clockwise
+	edges[0] = constructEdge(outline, tl_index, tr_index);
+	edges[1] = constructEdge(outline, tr_index, br_index);
+	edges[2] = constructEdge(outline, br_index, bl_index);
+	edges[3] = constructEdge(outline, bl_index, tl_index);
+
+	cout << "checkpoint " << endl;
+
+	// reset the image and plot the edges
+	vector<vector<Point>> edge_vector = {edges[0], edges[1], edges[2], edges[3]}; // temp so can plot
+	img_copy = img.clone(); // it's pointing to the same data I guess
+	drawContours(img_copy, edge_vector, 0, blue, 5);
+	drawContours(img_copy, edge_vector, 1, red, 5);
+	drawContours(img_copy, edge_vector, 2, green, 5);
+	drawContours(img_copy, edge_vector, 3, purple, 5);
+	circle(img_copy, outline[tl_index], 5, blue, 15);
+	circle(img_copy, outline[tr_index], 5, red, 15);
+	circle(img_copy, outline[bl_index], 5, green, 15);
+	circle(img_copy, outline[br_index], 5, purple, 15);
+
+	imshow("grey", img_copy);
+	waitKey(0);
 
 	destroyWindow("grey");
 
@@ -305,15 +368,14 @@ bool PuzzlePiece::isCorner() {
 	else return false;
 }
 
+// implement. also probably call this as part of pocessing and store as numEdges
 int PuzzlePiece::countEdges() {
 	int count = 0;
-	for(int i = 0; i < 4; i++) {
-		if(edges[i].id_string == "x") count++;
-	}
 	return count;
 }
 
 int PuzzlePiece::firstConnection() {
+	/*
 	if(edges[0].id_string == "x") {
 		if(edges[1].id_string == "x") {
 			return 2;
@@ -322,6 +384,8 @@ int PuzzlePiece::firstConnection() {
 	}
 	else if(edges[1].id_string == "x") return 3;
 	else return 0;
+	*/
+	return 0;
 }
 
 // could have done this with mod
@@ -334,14 +398,17 @@ int PuzzlePiece::nextIndex(int index) {
 }
 
 int PuzzlePiece::matchingEdgeIndex(string s) {
+	/*
 	for(int i = 0; i < 4; i++) {
 		if(edges[i].id_string == s) return i;
 	}
+	*/
 	return -1; //no match found
 }
 
 PuzzlePiece* PuzzlePiece::match(int edgeIndex, PuzzlePiece pieceArray[], int pieceArraySize) {
 	//search through edges to find a match
+	/*
 	for(int k = 0; k < pieceArraySize; k++) {
 		for(int i = 0; i < 4; i++) {
 			//second condition is to make sure it's not the same piece. re-write in a more readable way.
@@ -354,11 +421,23 @@ PuzzlePiece* PuzzlePiece::match(int edgeIndex, PuzzlePiece pieceArray[], int pie
 		}
 	}
 	//cout << "no match for piece " << number << endl;
+	*/
 	return NULL;
 }
 
 void PuzzlePiece::print() {
 	cout << setw(4) << number;
+}
+
+vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, int secondIdx) {
+	if(secondIdx > firstIdx) {
+		vector<Point> temp(outline.begin() + firstIdx, outline.begin() + secondIdx); // 2nd index + 1?
+		return temp;
+	} else {
+		vector<Point> temp(outline.begin() + firstIdx, outline.end());
+		temp.insert(temp.end(), outline.begin(), outline.begin() + secondIdx); // second index + 1?
+		return temp;
+	}
 }
 
 //idea: use the maze searching algorithm to start with the first puzzle piece.

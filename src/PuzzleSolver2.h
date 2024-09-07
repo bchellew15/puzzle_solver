@@ -8,24 +8,10 @@
 #ifndef PUZZLESOLVER2_H_
 #define PUZZLESOLVER2_H_
 
-class EdgeOfPiece {
-	//an edge is a collection of points
-	//should be standardized so that they start at (0,0) and end at (100,0)
-//private:
-	//Point *points;
-	//static int NUM_POINTS; //each edge should have the same number of points
-
-public:
-	std::string id_string;
-	void setId(std::string str);
-	//a function to access the points for use in the PuzzlePiece comparison function
-	//constructor: somehow take in a curve and turn it into points
-};
-
 class PuzzlePiece {
 public:
 	Mat img;
-	EdgeOfPiece edges[4];  //edges should be in clockwise order
+	vector<Point> edges[4];  //edges in order: top, right, bottom, left
 	PuzzlePiece *leftNeighbor;
 	PuzzlePiece *rightNeighbor;
 	PuzzlePiece *upNeighbor;
@@ -44,6 +30,8 @@ public:
 	static int oppIndex(int index);
 	int matchingEdgeIndex(std::string s); //returns the index of the matching edge
 	void print();
+	void rotate(); //necessary? how did I code it before?
+	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
 
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
