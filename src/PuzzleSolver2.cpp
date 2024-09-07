@@ -301,11 +301,8 @@ void PuzzlePiece::process() {
 	double tl_mindist = 1000, tr_mindist = 1000, bl_mindist = 1000, br_mindist = 1000; // must be better default
 	for(int i = 0; i < outline.size(); i++) {
 
-		cout << "i: " << i << endl;
-
 		double tl_dist = norm(core.tl() - outline[i]);
 		double tr_dist = norm(core.tl() + Point(core.width, 0) - outline[i]);
-		cout << "tr dist: " << tr_dist << endl;
 		double bl_dist = norm(core.br() + Point(-(core.width), 0) - outline[i]);
 		double br_dist = norm(core.br() - outline[i]);
 
@@ -316,7 +313,6 @@ void PuzzlePiece::process() {
 		if (tr_dist < tr_mindist) {
 			tr_mindist = tr_dist;
 			tr_index = i;
-			cout << "new tr index: " << tr_index << endl;
 		}
 		if (bl_dist < bl_mindist) {
 			bl_mindist = bl_dist;
@@ -328,16 +324,14 @@ void PuzzlePiece::process() {
 		}
 	}
 
-	cout << "closest indices: " << to_string(tl_index) << " " << to_string(tr_index) << " " << to_string(bl_index) << " " << to_string(br_index) << endl;
-
 	// make this a function : constructEdge(start_index, end_index, vector)
 	// end index needs the +1?
 	// better to pass outline by reference? I don't think I'm passing the data anyway.
 	// what if the ordering of the pieces is counter clockwise
-	edges[0] = constructEdge(outline, tl_index, tr_index);
-	edges[1] = constructEdge(outline, tr_index, br_index);
-	edges[2] = constructEdge(outline, br_index, bl_index);
-	edges[3] = constructEdge(outline, bl_index, tl_index);
+	edges[0] = constructEdge(outline, tr_index, tl_index);
+	edges[1] = constructEdge(outline, br_index, tr_index);
+	edges[2] = constructEdge(outline, bl_index, br_index);
+	edges[3] = constructEdge(outline, tl_index, bl_index);
 
 	cout << "checkpoint " << endl;
 
@@ -429,13 +423,14 @@ void PuzzlePiece::print() {
 	cout << setw(4) << number;
 }
 
+// note: outline should be oriented counter clockwise bc outer contour. but, I don't think that guarantees sequential order.
 vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, int secondIdx) {
 	if(secondIdx > firstIdx) {
-		vector<Point> temp(outline.begin() + firstIdx, outline.begin() + secondIdx); // 2nd index + 1?
+		vector<Point> temp(outline.begin() + firstIdx, outline.begin() + secondIdx + 1);
 		return temp;
 	} else {
 		vector<Point> temp(outline.begin() + firstIdx, outline.end());
-		temp.insert(temp.end(), outline.begin(), outline.begin() + secondIdx); // second index + 1?
+		temp.insert(temp.end(), outline.begin(), outline.begin() + secondIdx + 1);
 		return temp;
 	}
 }
