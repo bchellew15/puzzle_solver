@@ -40,7 +40,7 @@ int main() {
 	cout << size << " pieces" << endl;
 
 	// load images
-	// todo: error handling for if file doesn't exist
+	// todo: check if the file loaded properly
 	Mat images[size];
 	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Image_Files/Piece";
 	for( int i = 0; i < size; i++) {
@@ -55,8 +55,10 @@ int main() {
 	destroyWindow("temp");
 
 	PuzzlePiece pieces[size];
-	pieces[0].img = images[0];
-	pieces[0].process();
+	for(int i = 0; i < size; i++) {
+		pieces[i].img = images[i];
+		pieces[i].process();
+	}
 
 	// end here for now
 	return 0;
@@ -187,6 +189,7 @@ void EdgeOfPiece::setId(string str) {
 	id_string = str;
 }
 
+// todo: break this into steps. first get the piece border, then split into chunks
 void PuzzlePiece::process() {
 	// check that the image is valid
 
@@ -196,6 +199,8 @@ void PuzzlePiece::process() {
 	namedWindow("grey");
 	imshow("grey", grey);
 	waitKey(0);
+
+	// todo: smooth before thresholding
 
 	// threshold computed for now by looking at histogram in python
 	// could compute the threshold by looking at histogram dropoff
@@ -208,7 +213,8 @@ void PuzzlePiece::process() {
 
 	vector<vector<Point>> contours;
 	// todo: try chain_approx_simple
-	findContours(grey, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+	// CHAIN_APPROX_NONE
+	findContours(grey, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
 	// todo: verify that # contours is > 0
 
@@ -222,16 +228,75 @@ void PuzzlePiece::process() {
 		}
 	}
 
+	// put contour into a vector bc drawContours() requires that
 	contours.clear();
 	contours.push_back(outline);
 
 	// display the outline
-	Scalar color(255, 0, 0); // red
-	drawContours(img, contours, 0, color, 5);
+	Scalar blue(255, 0, 0);
+	Scalar red(0, 0, 255);
+	drawContours(img, contours, -1, blue, 5);
 	imshow("grey", img);
 	waitKey(0);
 
+	// bounding box
+	Rect boundingBox = boundingRect(outline);
+	rectangle(img, boundingBox.tl(), boundingBox.br(), blue, 5);
+	imshow("grey", img);
+	waitKey(0);
+
+	//decrease the bounding box to get the "core" rectangle of the piece
+	//todo: should have better way to choose increment (chose 50 pixels by trial and error)
+	Rect core = boundingBox; // is this a copy?
+//	cout << "bounding box size: " << core.width << " " << core.height << endl;
+//	cout << "top left" << core.tl() << endl;
+//	cout << "bottom right" << core.br() << endl;
+
+	// for now, I'm not going to worry about the (common) case where all 4 corners are empty.
+	// it happens any time there are two opposite nubs.
+
+	// for some reason this was increasing the top left AND bottom right...
+	// core = Rect(core.tl() + Point(0, 10), core.br());
+
+	// I guess you can add Points. why?
+
+	// first top
+	while(pointPolygonTest(outline, core.tl() + Point(50, 50), false) == -1
+			&& pointPolygonTest(outline, core.tl() + Point(core.width - 50, 50), false) == -1) {
+		core = Rect(core.tl().x, core.tl().y + 50, core.width, core.height - 50);
+
+		// maybe return false in this case?
+		if (core.tl().y > core.br().y) {
+			cout << "Failed to identify piece core." << endl;
+			return;
+		}
+	}
+	// right
+	while(pointPolygonTest(outline, core.tl() + Point(core.width - 50, 50), false) == -1
+			&& pointPolygonTest(outline, core.br() + Point(-50, -50), false) == -1) {
+		core = Rect(core.tl().x, core.tl().y, core.width - 50, core.height);
+
+		// maybe return false in this case?
+		if (core.tl().x > core.br().x) {
+			cout << "Failed to identify piece core." << endl;
+			return;
+		}
+	}
+	// for these pieces in particular, don't need to check bottom and left.
+
+	// show core
+	rectangle(img, core.tl(), core.br(), red, 5);
+	imshow("grey", img);
+	waitKey(0);
+
+	// find closest points to each of the corners of the core
+	// (future: identify corners on the contour and find the closest corner)
+
+
 	destroyWindow("grey");
+
+	cout << "number of points: " << outline.size() << endl;
+
 }
 
 //returns true if 2 or less edges
