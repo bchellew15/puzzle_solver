@@ -121,13 +121,13 @@ int main() {
 
 	PuzzlePiece *columnCursor = root;
 
-	while(columnCursor != nullptr) {
+	while(columnCursor != nullptr && piecesMatched < numPieces) {
 
 		cout << "Column cursor: piece " << columnCursor->number << endl;
 
 		// iterate down to the bottom
 		PuzzlePiece *rowCursor = columnCursor;
-		while(rowCursor != nullptr) {
+		while(rowCursor != nullptr && piecesMatched < numPieces) {
 
 			cout << "Row cursor: piece " << rowCursor->number << endl;
 
@@ -168,69 +168,9 @@ int main() {
 		}
 	}
 
-		/*
+	cout << "Puzzle completed!" << endl;
 
-		//set up the down neighbor if not null:
-
-
-			//cout << "down neighbor: " << matchingPiece->number << endl;
-			//orient the piece (set rightIndex and downIndex:)
-			matchingPiece->rightIndex = PuzzlePiece::nextIndex(edgeIndex);
-			matchingPiece->downIndex = PuzzlePiece::oppIndex(edgeIndex);
-		}
-
-		//start another loop that goes horizontal, with a subCursor
-		PuzzlePiece *subCursor;
-		subCursor = cursor;
-		while(subCursor != NULL) {
-
-			//cout << "sublooping with piece " << subCursor->number << endl;
-
-			//find the matching piece:
-			PuzzlePiece *subMatchingPiece;
-			subMatchingPiece = subCursor->match(subCursor->rightIndex,pieces,size);
-
-			//link them:
-			subCursor->rightNeighbor = subMatchingPiece;
-
-			//if(subCursor->number == 1) {
-				//cout << "subcursor right neighbor is " << s
-			//}
-
-			if(subCursor->rightNeighbor != NULL) {
-				//cout << "right neighbor: " << subMatchingPiece->number << endl;
-
-				//find the index of the matching edge, and assign to the edge
-				int subEdgeIndex = subMatchingPiece->matchingEdgeIndex(subCursor->edges[subCursor->rightIndex].id_string);
-
-				//orient the piece (set rightIndex)
-				subMatchingPiece->rightIndex = PuzzlePiece::oppIndex(subEdgeIndex);
-			}
-
-			//still works if NULL
-			//cout << "done sublooping with piece " << subCursor->number << endl;
-			subCursor = subCursor->rightNeighbor;
-
-		}
-
-		//still works if NULL
-		//cout << "done looping" << endl;
-		cursor = cursor->downNeighbor;
-	}
-
-	cout << "done matching" << endl;
-	*/
-
-	/*if(pieces[firstCornerIndex]->downNeighbor == NULL)
-		cout << "DOWN IS NULL";
-	else
-		cout << "DOWN IS WORKING";
-
-	if(pieces[firstCornerIndex]->rightNeighbor == NULL)
-			cout << "RIGHT IS NULL";
-		else
-			cout << "RIGHT IS WORKING";
-	*/
+	// todo: better evaluation of whether the puzzle is actually completed
 
 	/*
 	//print:
@@ -595,7 +535,7 @@ int PuzzlePiece::downIndex() {
 // search through edges to find a match
 pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], int numPieces) {
 
-	bool firstScore = false;
+	bool firstScore = true;
 	double bestMatchScore; // find a better way to set it
 	int bestMatchPieceIdx;
 	int bestMatchEdgeIdx;
@@ -605,8 +545,14 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
 			double score = edges[edgeIndex].match(pieces[i].edges[j]);
-			if(firstScore) bestMatchScore = score;
-			else if(score > bestMatchScore) {
+			cout << "Piece " << number << " scores " << score << " against index " << j << " of piece " << i+1 << endl;
+			if(firstScore) {
+				bestMatchScore = score;
+				bestMatchPieceIdx = i;
+				bestMatchEdgeIdx = j;
+				firstScore = false;
+			}
+			else if(score < bestMatchScore) { // low score is best
 				bestMatchScore = score;
 				bestMatchPieceIdx = i;
 				bestMatchEdgeIdx = j;
