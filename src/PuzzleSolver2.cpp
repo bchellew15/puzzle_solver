@@ -56,8 +56,7 @@ int main() {
 
 	PuzzlePiece pieces[size];
 	for(int i = 0; i < size; i++) {
-		pieces[i].img = images[i];
-		pieces[i].process();
+		pieces[i] = PuzzlePiece(images[i], i+1);
 	}
 
 	// end here for now
@@ -189,6 +188,16 @@ int main() {
 	return 0;
 }
 
+PuzzlePiece::PuzzlePiece() {
+	// empty
+}
+
+PuzzlePiece::PuzzlePiece(Mat m, int i) {
+	img = m;
+	number = i+1;
+	process();
+}
+
 // todo: break this into steps. first get the piece border, then split into chunks
 void PuzzlePiece::process() {
 	// check that the image is valid
@@ -250,7 +259,7 @@ void PuzzlePiece::process() {
 
 	//decrease the bounding box to get the "core" rectangle of the piece
 	//todo: should have better way to choose increment (chose 50 pixels by trial and error)
-	Rect core = boundingBox; // is this a copy?
+	core = boundingBox; // is this a copy? probably not...
 //	cout << "bounding box size: " << core.width << " " << core.height << endl;
 //	cout << "top left" << core.tl() << endl;
 //	cout << "bottom right" << core.br() << endl;
@@ -328,15 +337,15 @@ void PuzzlePiece::process() {
 	// end index needs the +1?
 	// better to pass outline by reference? I don't think I'm passing the data anyway.
 	// what if the ordering of the pieces is counter clockwise
-	edges[0] = constructEdge(outline, tr_index, tl_index);
-	edges[1] = constructEdge(outline, br_index, tr_index);
-	edges[2] = constructEdge(outline, bl_index, br_index);
-	edges[3] = constructEdge(outline, tl_index, bl_index);
+	edges[0].edge = constructEdge(outline, tr_index, tl_index);
+	edges[1].edge = constructEdge(outline, br_index, tr_index);
+	edges[2].edge = constructEdge(outline, bl_index, br_index);
+	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
 	cout << "checkpoint " << endl;
 
 	// reset the image and plot the edges
-	vector<vector<Point>> edge_vector = {edges[0], edges[1], edges[2], edges[3]}; // temp so can plot
+	vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
 	img_copy = img.clone(); // it's pointing to the same data I guess
 	drawContours(img_copy, edge_vector, 0, blue, 5);
 	drawContours(img_copy, edge_vector, 1, red, 5);
@@ -350,10 +359,11 @@ void PuzzlePiece::process() {
 	imshow("grey", img_copy);
 	waitKey(0);
 
+	// todo: rotate edges to standard orientation so they can be compared
+
 	destroyWindow("grey");
 
 	cout << "number of points: " << outline.size() << endl;
-
 }
 
 //returns true if 2 or less edges
