@@ -6,6 +6,7 @@
 using namespace std;
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/shape.hpp>
 using namespace cv;
 
 #include "PuzzleSolver2.h"
@@ -57,7 +58,7 @@ int main() {
 
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i+1);
+		pieces[i] = PuzzlePiece(images[i], i+1, true); // last argument is "verbose"
 	}
 
 	// test: compare all edges to each other
@@ -65,8 +66,9 @@ int main() {
 		for(int j = i+1; j < numPieces; j++) {
 			for(int k = 0; k < 4; k++) {
 				for(int l = 0; l < 4; l++) {
+					if(pieces[i].edges[k].isEdgeVar || pieces[j].edges[l].isEdgeVar) continue;
 					cout << pieces[i].edges[k].match(pieces[j].edges[l]);
-					cout << "pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
+					cout << " pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
 				}
 			}
 		}
@@ -77,6 +79,7 @@ int main() {
 	// avg dist > 100 for non-edges
 
 	// test edge detection and counting
+	/*
 	for(int i = 0; i < numPieces; i++) {
 		cout << "Piece " << i << endl;
 		for(int j = 0; j < 4; j++) {
@@ -85,6 +88,7 @@ int main() {
 		cout << "Number of edges: " << pieces[i].countEdges() << endl;
 		cout << "Is corner? " << pieces[i].isCorner() << endl;
 	}
+	*/
 
 	// end here for now
 	return 0;
@@ -217,7 +221,20 @@ int main() {
 
 // close to 0 is a good match
 double EdgeOfPiece::match(EdgeOfPiece other) {
-	return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
+
+	// prep by rotating one edge (by flipping twice)
+	vector<Point> flippedEdge = vector<Point>(other.edge.size());
+	for(int i = 0; i < other.edge.size(); i++) {
+		flippedEdge[i].x = -other.edge[i].x;
+		flippedEdge[i].y = -other.edge[i].y;
+	}
+
+	// I don't understand why this needs to be a pointer. otherwise it thinks computeDistance() is a virtual fn.
+	// also don't know what's up w the create() function
+	Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
+	return h->computeDistance(edge, flippedEdge);
+
+	// return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
 }
 
 bool EdgeOfPiece::isEdge() {
@@ -249,10 +266,10 @@ PuzzlePiece::PuzzlePiece() {
 	// empty
 }
 
-PuzzlePiece::PuzzlePiece(Mat m, int i) {
+PuzzlePiece::PuzzlePiece(Mat m, int i, bool verbose) {
 	img = m;
 	number = i+1;
-	process();
+	process(verbose);
 }
 
 // todo: break this into steps. first get the piece border, then split into chunks
@@ -408,11 +425,6 @@ void PuzzlePiece::process(bool verbose) {
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
-	// check if these are actual edges and set isEdgeVar
-	for(int i = 0; i < 4; i++) {
-		edges[i].isEdgeVar = edges[i].isEdge();
-	}
-
 	if(verbose) {
 		// reset the image and plot the edges
 		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
@@ -430,7 +442,65 @@ void PuzzlePiece::process(bool verbose) {
 		waitKey(0);
 	}
 
-	// todo: rotate edges to standard orientation so they can be compared
+	for(int i = 0; i < 4; i++) {
+		// check if these are actual edges and set isEdgeVar
+		edges[i].isEdgeVar = edges[i].isEdge();
+
+		// rotate and translate the edges for easier comparison
+		// translate all the edges to line up with the origin
+		// (easier to line up edges from images w different dimensions. can translate again to display.)
+		if(!edges[i].isEdgeVar) {
+			Rect edgeBound = boundingRect(edges[i].edge);
+			double mid_x = (edgeBound.tl().x + edgeBound.br().x) / 2;
+			double mid_y = (edgeBound.tl().y + edgeBound.br().y) / 2;
+			for(Point &p: edges[i].edge) {
+				p.x -= mid_x;
+				p.y -= mid_y;
+			}
+		}
+	}
+
+	// right edge: rotate by flipping across y = -x, then across y = 0 (origin is upper right)
+	if(!edges[1].isEdgeVar) {
+		for(Point &p: edges[1].edge) {
+			double temp = p.y;
+			p.y = -p.x;
+			p.x = temp;
+		}
+	}
+	// lower edge: rotate by flipping in x and y direction
+	if(!edges[2].isEdgeVar) {
+		for(Point &p: edges[2].edge) {
+			p.y = -p.y;
+			p.x = -p.x;
+		}
+	}
+	// left edge: rotate by flipping across y = x then across y = 0 (origin is upper right)
+	if(!edges[3].isEdgeVar) {
+		for(Point &p: edges[3].edge) {
+			double temp = p.y;
+			p.y = p.x;
+			p.x = -temp;
+		}
+	}
+
+	if(verbose) {
+			// reset the image and plot the edges
+			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
+			for(int i = 0; i < 4; i++) {
+				for(Point &p: edge_vector[i]) {
+					p.x += 1000;
+					p.y += 1000;
+				}
+			}
+			img_copy = img.clone(); // it's pointing to the same data I guess
+			drawContours(img_copy, edge_vector, 0, blue, 5);
+			drawContours(img_copy, edge_vector, 1, red, 5);
+			drawContours(img_copy, edge_vector, 2, green, 5);
+			drawContours(img_copy, edge_vector, 3, purple, 5);
+			imshow("grey", img_copy);
+			waitKey(0);
+		}
 
 	if(verbose) {
 		destroyWindow("grey");

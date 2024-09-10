@@ -21,7 +21,7 @@ public:
 class PuzzlePiece {
 public:
 	PuzzlePiece();
-	PuzzlePiece(Mat m, int i);
+	PuzzlePiece(Mat m, int i, bool verbose=true);
 
 	Mat img;
 	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
@@ -31,6 +31,7 @@ public:
 	PuzzlePiece *downNeighbor;
 	Rect core;
 	int number; //the number of the piece
+	double theta = 0; // counterclockwise rotation required for the image of this piece
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	int downIndex;
 	bool isConnected = false; // whether this piece has been connected to the puzzle
