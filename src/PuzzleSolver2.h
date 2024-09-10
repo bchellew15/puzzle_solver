@@ -15,6 +15,7 @@ public:
 
 	bool isEdge();
 	void rotate_edge(vector<Point> unrotated, double theta);
+	double match(EdgeOfPiece other);
 };
 
 class PuzzlePiece {
@@ -34,7 +35,7 @@ public:
 	int downIndex;
 	bool isConnected = false; // whether this piece has been connected to the puzzle
 
-	void process(); // process the image and get edge shapes
+	void process(bool verbose=false); // process the image and get edge shapes
 	bool isCorner();
 	int countEdges(); //returns number of edges on the piece. 2 for corner, 1 for edge
 	//bool isEdge();  //returns true for corners
