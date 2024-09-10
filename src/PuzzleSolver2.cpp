@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <iomanip> //for setw(n)
+#include <cmath>
 using namespace std;
 
 #include <opencv2/opencv.hpp>
@@ -33,17 +34,17 @@ int main() {
 
 	// get number of pieces.
 	// todo: count the pieces in the folder
-	string sizeStr;
+	string numPiecesStr;
 	cout << "How many pieces?" << endl;
-	cin >> sizeStr;
-	int size = stoi(sizeStr);
-	cout << size << " pieces" << endl;
+	cin >> numPiecesStr;
+	int numPieces = stoi(numPiecesStr);
+	cout << numPieces << " pieces" << endl;
 
 	// load images
 	// todo: check if the file loaded properly
-	Mat images[size];
+	Mat images[numPieces];
 	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Image_Files/Piece";
-	for( int i = 0; i < size; i++) {
+	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
 	}
@@ -54,9 +55,35 @@ int main() {
 	waitKey(0);
 	destroyWindow("temp");
 
-	PuzzlePiece pieces[size];
-	for(int i = 0; i < size; i++) {
+	PuzzlePiece pieces[numPieces];
+	for(int i = 0; i < numPieces; i++) {
 		pieces[i] = PuzzlePiece(images[i], i+1);
+	}
+
+	// test: compare all edges to each other
+	for(int i = 0; i < numPieces-1; i++) {
+		for(int j = i+1; j < numPieces; j++) {
+			for(int k = 0; k < 4; k++) {
+				for(int l = 0; l < 4; l++) {
+					cout << pieces[i].edges[k].match(pieces[j].edges[l]);
+					cout << "pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
+				}
+			}
+		}
+	}
+
+	// edge test results:
+	// avg dist between 2 and 4 pixels for edges.
+	// avg dist > 100 for non-edges
+
+	// test edge detection and counting
+	for(int i = 0; i < numPieces; i++) {
+		cout << "Piece " << i << endl;
+		for(int j = 0; j < 4; j++) {
+			cout << "Edge " << j+1 << ": " << pieces[i].edges[j].isEdgeVar << endl;
+		}
+		cout << "Number of edges: " << pieces[i].countEdges() << endl;
+		cout << "Is corner? " << pieces[i].isCorner() << endl;
 	}
 
 	// end here for now
@@ -188,6 +215,36 @@ int main() {
 	return 0;
 }
 
+// close to 0 is a good match
+double EdgeOfPiece::match(EdgeOfPiece other) {
+	return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
+}
+
+bool EdgeOfPiece::isEdge() {
+	vector<double> fittedLine; // not clear if this is the right type
+	fitLine(edge, fittedLine, DIST_L2, 0.0, .01, .01);
+
+	// can I do this in one line
+	double vx = fittedLine[0];
+	double vy = fittedLine[1];
+	double x0 = fittedLine[2];
+	double y0 = fittedLine[3];
+	double a = -vy;
+	double b = vx;
+	double c = vy*x0 - vx*y0;
+
+	double totalDist = 0;
+	double denom = sqrt(pow(a, 2) + pow(b, 2));
+	for(Point p: edge) {
+		// does += or / have precedence? can I do this in one line?
+		double singleDist = abs(a*p.x + b*p.y + c) / denom;
+		totalDist += singleDist;
+	}
+	double avgDist = totalDist / edge.size();
+
+	return avgDist < 10;
+}
+
 PuzzlePiece::PuzzlePiece() {
 	// empty
 }
@@ -199,16 +256,18 @@ PuzzlePiece::PuzzlePiece(Mat m, int i) {
 }
 
 // todo: break this into steps. first get the piece border, then split into chunks
-void PuzzlePiece::process() {
+void PuzzlePiece::process(bool verbose) {
 	// check that the image is valid
 
 	Mat grey;
 	Mat img_copy = img.clone();
 	cvtColor(img_copy, grey, COLOR_BGR2GRAY); // imread stores as BGR
 
-	namedWindow("grey");
-	imshow("grey", grey);
-	waitKey(0);
+	if(verbose) {
+		namedWindow("grey");
+		imshow("grey", grey);
+		waitKey(0);
+	}
 
 	// todo: smooth before thresholding
 
@@ -216,8 +275,10 @@ void PuzzlePiece::process() {
 	// could compute the threshold by looking at histogram dropoff
 	threshold(grey, grey, 30, 255, THRESH_BINARY);
 
-	imshow("grey", grey);
-	waitKey(0);
+	if(verbose) {
+		imshow("grey", grey);
+		waitKey(0);
+	}
 
 	// cout << "var type: " << grey.type() << endl;
 
@@ -242,20 +303,24 @@ void PuzzlePiece::process() {
 	contours.clear();
 	contours.push_back(outline);
 
-	// display the outline
 	Scalar blue(255, 0, 0);
 	Scalar red(0, 0, 255);
 	Scalar green(0, 255, 0);
 	Scalar purple(128, 0, 128);
-	drawContours(img_copy, contours, -1, blue, 5);
-	imshow("grey", img_copy);
-	waitKey(0);
+	if(verbose) {
+		// display the outline
+		drawContours(img_copy, contours, -1, blue, 5);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
 
 	// bounding box
 	Rect boundingBox = boundingRect(outline);
-	rectangle(img_copy, boundingBox.tl(), boundingBox.br(), blue, 5);
-	imshow("grey", img_copy);
-	waitKey(0);
+	if(verbose) {
+		rectangle(img_copy, boundingBox.tl(), boundingBox.br(), blue, 5);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
 
 	//decrease the bounding box to get the "core" rectangle of the piece
 	//todo: should have better way to choose increment (chose 50 pixels by trial and error)
@@ -296,17 +361,18 @@ void PuzzlePiece::process() {
 	}
 	// for these pieces in particular, don't need to check bottom and left.
 
-	// show core
-	rectangle(img_copy, core.tl(), core.br(), red, 5);
-	imshow("grey", img_copy);
-	waitKey(0);
+	if(verbose) {
+		// show core
+		rectangle(img_copy, core.tl(), core.br(), red, 5);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
 
 	cout << "num points: " << outline.size() << endl;
 
 	// find closest points to each of the corners of the core
 	// (future: identify corners on the contour and find the closest corner)
 	int tl_index = 0, tr_index = 0, bl_index = 0, br_index = 0;
-	cout << "starting value: " << tr_index << endl;
 	double tl_mindist = 1000, tr_mindist = 1000, bl_mindist = 1000, br_mindist = 1000; // must be better default
 	for(int i = 0; i < outline.size(); i++) {
 
@@ -342,39 +408,50 @@ void PuzzlePiece::process() {
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
-	cout << "checkpoint " << endl;
+	// check if these are actual edges and set isEdgeVar
+	for(int i = 0; i < 4; i++) {
+		edges[i].isEdgeVar = edges[i].isEdge();
+	}
 
-	// reset the image and plot the edges
-	vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
-	img_copy = img.clone(); // it's pointing to the same data I guess
-	drawContours(img_copy, edge_vector, 0, blue, 5);
-	drawContours(img_copy, edge_vector, 1, red, 5);
-	drawContours(img_copy, edge_vector, 2, green, 5);
-	drawContours(img_copy, edge_vector, 3, purple, 5);
-	circle(img_copy, outline[tl_index], 5, blue, 15);
-	circle(img_copy, outline[tr_index], 5, red, 15);
-	circle(img_copy, outline[bl_index], 5, green, 15);
-	circle(img_copy, outline[br_index], 5, purple, 15);
+	if(verbose) {
+		// reset the image and plot the edges
+		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
+		img_copy = img.clone(); // it's pointing to the same data I guess
+		drawContours(img_copy, edge_vector, 0, blue, 5);
+		drawContours(img_copy, edge_vector, 1, red, 5);
+		drawContours(img_copy, edge_vector, 2, green, 5);
+		drawContours(img_copy, edge_vector, 3, purple, 5);
+		circle(img_copy, outline[tl_index], 5, blue, 15);
+		circle(img_copy, outline[tr_index], 5, red, 15);
+		circle(img_copy, outline[bl_index], 5, green, 15);
+		circle(img_copy, outline[br_index], 5, purple, 15);
 
-	imshow("grey", img_copy);
-	waitKey(0);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
 
 	// todo: rotate edges to standard orientation so they can be compared
 
-	destroyWindow("grey");
+	if(verbose) {
+		destroyWindow("grey");
+	}
 
 	cout << "number of points: " << outline.size() << endl;
 }
 
-//returns true if 2 or less edges
+//returns true if 2 or more edges
 bool PuzzlePiece::isCorner() {
-	if(countEdges() >= 2) return true;
-	else return false;
+	return countEdges() >= 2;
 }
 
 // implement. also probably call this as part of pocessing and store as numEdges
 int PuzzlePiece::countEdges() {
 	int count = 0;
+	for(int i = 0; i < 4; i++) {
+		if(edges[i].isEdgeVar) {
+			count++;
+		}
+	}
 	return count;
 }
 
