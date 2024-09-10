@@ -29,6 +29,7 @@ public:
 	PuzzlePiece *rightNeighbor = nullptr;
 	PuzzlePiece *upNeighbor = nullptr;
 	PuzzlePiece *downNeighbor = nullptr;
+	vector<Point> outline;
 	Rect core;
 	int number; //the number of the piece
 	double theta = 0; // counterclockwise rotation required for the image of this piece
@@ -51,10 +52,12 @@ public:
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
 	//if no match, returns NULL
-	pair<PuzzlePiece*, int> match(int edgeIndex, PuzzlePiece pieceArray[], int pieceArraySize); //finds the matching piece
+	pair<PuzzlePiece*, int> match(int edgeIndex, PuzzlePiece pieces[], int numPieces); //finds the matching piece
 
 	//constructors:
 	//PuzzlePiece();
 };
+
+void displayPuzzle(PuzzlePiece *root);
 
 #endif /* PUZZLESOLVER2_H_ */
