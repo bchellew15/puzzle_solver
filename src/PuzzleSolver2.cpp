@@ -58,10 +58,11 @@ int main() {
 
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i+1, true); // last argument is "verbose"
+		pieces[i] = PuzzlePiece(images[i], i, false); // last argument is "verbose"
 	}
 
 	// test: compare all edges to each other
+	/*
 	for(int i = 0; i < numPieces-1; i++) {
 		for(int j = i+1; j < numPieces; j++) {
 			for(int k = 0; k < 4; k++) {
@@ -73,6 +74,7 @@ int main() {
 			}
 		}
 	}
+	*/
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -90,51 +92,86 @@ int main() {
 	}
 	*/
 
-	// end here for now
-	return 0;
-
-	/*
 	cout<<"Loaded!" << endl;
 
-	//find a corner:
-	int firstCornerIndex = 0;
-	while(firstCornerIndex < size && !((pieces[firstCornerIndex]).isCorner())) {
-		firstCornerIndex++;
+	// todo: make this an "assemble" function
+
+	// find a corner
+	int firstCornerIdx = 0;
+	while(firstCornerIdx < numPieces && !(pieces[firstCornerIdx]).isCorner()) {
+		firstCornerIdx++;
 	}
-	pieces[firstCornerIndex].isConnected = true;
-	//firstCornerIndex is now the index of a corner
+	if(firstCornerIdx >= numPieces) {
+		cout << "ERROR: no corners found" << endl;
+		return 0;
+	}
 
-	//cout << "first corner is " << firstCornerIndex << endl;
+	cout << "First corner at index " << firstCornerIdx << endl;
 
-	//set downIndex and rightIndex:
-	pieces[firstCornerIndex].rightIndex = pieces[firstCornerIndex].firstConnection();
-	pieces[firstCornerIndex].downIndex = PuzzlePiece::nextIndex(pieces[firstCornerIndex].rightIndex);
+	PuzzlePiece *root = &pieces[firstCornerIdx];
+	root->isConnected = true;
+	// todo: check if pieces matched reaches numPieces
+	int piecesMatched = 1;
+	// set the orientation of the root piece
+	root->rightIndex = root->orientRoot();
 
-	//cout << "right index is " << pieces[firstCornerIndex]->rightIndex << endl;
-	//cout << "down index is " << pieces[firstCornerIndex]->downIndex << endl;
+	cout << "Start matching" << endl;
 
-	PuzzlePiece *cursor;
+	// wonder if there is a cleaner way to write these loops e.g. w less duplication
 
-	cout << "starting matching" << endl;
+	PuzzlePiece *columnCursor = root;
 
-	//loop the cursor through the other rows:
-	cursor = &(pieces[firstCornerIndex]);
-	while(cursor != NULL) {
-		//look for a matching piece and set its orientation:
+	while(columnCursor != nullptr) {
 
-		//cout << "looping with piece " << cursor->number << endl;
+		cout << "Column cursor: piece " << columnCursor->number << endl;
 
-		//find the matching piece:
-		PuzzlePiece *matchingPiece;
-		matchingPiece = cursor->match(cursor->downIndex,pieces,size);
+		// iterate down to the bottom
+		PuzzlePiece *rowCursor = columnCursor;
+		while(rowCursor != nullptr) {
 
-		//link them:
-		cursor->downNeighbor = matchingPiece;
+			cout << "Row cursor: piece " << rowCursor->number << endl;
+
+			if(rowCursor->edges[rowCursor->downIndex()].isEdgeVar) {
+				rowCursor = nullptr;
+				cout << "Bottom edge piece found" << endl;
+			} else {
+				// find a match
+				cout << "Looking for down match" << endl;
+				pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces);
+				PuzzlePiece *matchingPiece = matchPair.first;
+				piecesMatched++;
+				matchingPiece->isConnected = true;
+				rowCursor->downNeighbor = matchingPiece;
+				matchingPiece->upNeighbor = rowCursor; // not reallly necessary
+				matchingPiece->rightIndex = PuzzlePiece::nextIndex(matchPair.second);
+
+				rowCursor = matchingPiece;
+			}
+		}
+
+		// find matching piece to the right and shift to the right
+		if(columnCursor->edges[columnCursor->rightIndex].isEdgeVar) {
+			columnCursor = nullptr;
+			cout << "Right edge piece found" << endl;
+		} else {
+			// find a match
+			cout << "Looking for right match" << endl;
+			pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces);
+			PuzzlePiece *matchingPiece = matchPair.first;
+			piecesMatched++;
+			matchingPiece->isConnected = true;
+			columnCursor->rightNeighbor = matchingPiece;
+			matchingPiece->leftNeighbor = columnCursor; // not reallly necessary
+			matchingPiece->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
+
+			columnCursor = matchingPiece;
+		}
+	}
+
+		/*
 
 		//set up the down neighbor if not null:
-		if(cursor->downNeighbor != NULL) {
-			//find the index of the matching edge, and assign to the edge
-			int edgeIndex = matchingPiece->matchingEdgeIndex(cursor->edges[cursor->downIndex].id_string);
+
 
 			//cout << "down neighbor: " << matchingPiece->number << endl;
 			//orient the piece (set rightIndex and downIndex:)
@@ -493,11 +530,11 @@ void PuzzlePiece::process(bool verbose) {
 					p.y += 1000;
 				}
 			}
+			vector<Scalar> colors = {blue, red, green, purple};
 			img_copy = img.clone(); // it's pointing to the same data I guess
-			drawContours(img_copy, edge_vector, 0, blue, 5);
-			drawContours(img_copy, edge_vector, 1, red, 5);
-			drawContours(img_copy, edge_vector, 2, green, 5);
-			drawContours(img_copy, edge_vector, 3, purple, 5);
+			for(int i = 0; i < 4; i++) {
+				if(!edges[i].isEdgeVar) drawContours(img_copy, edge_vector, i, colors[i], 5);
+			}
 			imshow("grey", img_copy);
 			waitKey(0);
 		}
@@ -525,18 +562,17 @@ int PuzzlePiece::countEdges() {
 	return count;
 }
 
-int PuzzlePiece::firstConnection() {
-	/*
-	if(edges[0].id_string == "x") {
-		if(edges[1].id_string == "x") {
+// return index of right connection
+// assumption: the piece has exactly 2 consecutive edges
+int PuzzlePiece::orientRoot() {
+	if(edges[0].isEdgeVar) {
+		if(edges[1].isEdgeVar) {
 			return 2;
 		}
 		else return 1;
 	}
-	else if(edges[1].id_string == "x") return 3;
+	else if(edges[1].isEdgeVar) return 3;
 	else return 0;
-	*/
-	return 0;
 }
 
 // could have done this with mod
@@ -548,32 +584,39 @@ int PuzzlePiece::nextIndex(int index) {
 	return (index + 1) % 4;
 }
 
-int PuzzlePiece::matchingEdgeIndex(string s) {
-	/*
-	for(int i = 0; i < 4; i++) {
-		if(edges[i].id_string == s) return i;
-	}
-	*/
-	return -1; //no match found
+int PuzzlePiece::prevIndex(int index) {
+	return (index - 1) % 4;
 }
 
-PuzzlePiece* PuzzlePiece::match(int edgeIndex, PuzzlePiece pieceArray[], int pieceArraySize) {
-	//search through edges to find a match
-	/*
-	for(int k = 0; k < pieceArraySize; k++) {
-		for(int i = 0; i < 4; i++) {
-			//second condition is to make sure it's not the same piece. re-write in a more readable way.
-			// (note: should just start this function by checking if "edgeIndex" refers to an edge.)
-			if ( pieceArray[k].edges[i].id_string != "x" && pieceArray[k].edges[i].id_string == edges[edgeIndex].id_string && pieceArray[k].number != number ) {
-				PuzzlePiece *temp = &(pieceArray[k]);
-				// cout << pieceArray[k]->edges[i].id_string << " from piece " << pieceArray[k]->number << " matches " << edges[edgeIndex].id_string << " from piece " << number << endl;
-				return temp;
+int PuzzlePiece::downIndex() {
+	return nextIndex(rightIndex);
+}
+
+// search through edges to find a match
+pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], int numPieces) {
+
+	bool firstScore = false;
+	double bestMatchScore; // find a better way to set it
+	int bestMatchPieceIdx;
+	int bestMatchEdgeIdx;
+
+	for(int i = 0; i < numPieces; i++) {
+		if(pieces[i].isConnected) continue; // skip if already connected
+		for(int j = 0; j < 4; j++) {
+			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
+			double score = edges[edgeIndex].match(pieces[i].edges[j]);
+			if(firstScore) bestMatchScore = score;
+			else if(score > bestMatchScore) {
+				bestMatchScore = score;
+				bestMatchPieceIdx = i;
+				bestMatchEdgeIdx = j;
 			}
 		}
 	}
-	//cout << "no match for piece " << number << endl;
-	*/
-	return NULL;
+
+	cout << "Piece " << number << " matches edge " << bestMatchEdgeIdx << " of piece " << bestMatchPieceIdx+1 << endl;
+
+	return make_pair(&pieces[bestMatchPieceIdx], bestMatchEdgeIdx);
 }
 
 void PuzzlePiece::print() {
