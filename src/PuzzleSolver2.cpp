@@ -119,52 +119,52 @@ int main() {
 
 	// wonder if there is a cleaner way to write these loops e.g. w less duplication
 
-	PuzzlePiece *columnCursor = root;
+	PuzzlePiece *rowCursor = root;
 
-	while(columnCursor != nullptr && piecesMatched < numPieces) {
-
-		cout << "Column cursor: piece " << columnCursor->number << endl;
+	while(rowCursor != nullptr && piecesMatched < numPieces) {
 
 		// iterate down to the bottom
-		PuzzlePiece *rowCursor = columnCursor;
-		while(rowCursor != nullptr && piecesMatched < numPieces) {
+		PuzzlePiece *columnCursor = rowCursor;
+		while(columnCursor != nullptr && piecesMatched < numPieces) {
 
-			cout << "Row cursor: piece " << rowCursor->number << endl;
+			cout << "Column cursor: piece " << columnCursor->number << endl;
 
-			if(rowCursor->edges[rowCursor->downIndex()].isEdgeVar) {
-				rowCursor = nullptr;
-				cout << "Bottom edge piece found" << endl;
+			// find matching piece to the right and shift to the right
+			if(columnCursor->edges[columnCursor->rightIndex].isEdgeVar) {
+				columnCursor = nullptr;
+				cout << "Right edge piece found" << endl;
 			} else {
 				// find a match
-				cout << "Looking for down match" << endl;
-				pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces);
+				cout << "Looking for right match" << endl;
+				pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces);
 				PuzzlePiece *matchingPiece = matchPair.first;
 				piecesMatched++;
 				matchingPiece->isConnected = true;
-				rowCursor->downNeighbor = matchingPiece;
-				matchingPiece->upNeighbor = rowCursor; // not reallly necessary
-				matchingPiece->rightIndex = PuzzlePiece::nextIndex(matchPair.second);
+				columnCursor->rightNeighbor = matchingPiece;
+				matchingPiece->leftNeighbor = columnCursor; // not reallly necessary
+				matchingPiece->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
 
-				rowCursor = matchingPiece;
+				columnCursor = matchingPiece;
 			}
 		}
 
-		// find matching piece to the right and shift to the right
-		if(columnCursor->edges[columnCursor->rightIndex].isEdgeVar) {
-			columnCursor = nullptr;
-			cout << "Right edge piece found" << endl;
+		cout << "Row cursor: piece " << rowCursor->number << endl;
+
+		if(rowCursor->edges[rowCursor->downIndex()].isEdgeVar) {
+			rowCursor = nullptr;
+			cout << "Bottom edge piece found" << endl;
 		} else {
 			// find a match
-			cout << "Looking for right match" << endl;
-			pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces);
+			cout << "Looking for down match" << endl;
+			pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces);
 			PuzzlePiece *matchingPiece = matchPair.first;
 			piecesMatched++;
 			matchingPiece->isConnected = true;
-			columnCursor->rightNeighbor = matchingPiece;
-			matchingPiece->leftNeighbor = columnCursor; // not reallly necessary
-			matchingPiece->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
+			rowCursor->downNeighbor = matchingPiece;
+			matchingPiece->upNeighbor = rowCursor; // not reallly necessary
+			matchingPiece->rightIndex = PuzzlePiece::nextIndex(matchPair.second);
 
-			columnCursor = matchingPiece;
+			rowCursor = matchingPiece;
 		}
 	}
 
@@ -172,26 +172,18 @@ int main() {
 
 	// todo: better evaluation of whether the puzzle is actually completed
 
-	/*
 	//print:
-	cursor = &(pieces[firstCornerIndex]);
-	while(cursor != NULL) {
-
-		//start another loop that goes horizontal, with a subCursor
-		PuzzlePiece *subCursor;
-		subCursor = cursor;
-		while(subCursor != NULL) {
-			subCursor->print();
-
-			//still works if NULL
-			subCursor = subCursor->rightNeighbor;
+	// (doesn't work properly bc the main loop goes top to bottom first)
+	rowCursor = root;
+	while(rowCursor != nullptr) {
+		PuzzlePiece *columnCursor = rowCursor;
+		while(columnCursor != nullptr) {
+			columnCursor->print();
+			columnCursor = columnCursor->rightNeighbor;
 		}
 		cout << endl;
-
-		//still works if NULL
-		cursor = cursor->downNeighbor;
+		rowCursor = rowCursor->downNeighbor;
 	}
-	*/
 
 	return 0;
 }
