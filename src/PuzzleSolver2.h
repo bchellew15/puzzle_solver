@@ -8,14 +8,27 @@
 #ifndef PUZZLESOLVER2_H_
 #define PUZZLESOLVER2_H_
 
+class EdgeOfPiece {
+public:
+	vector<Point> edge;
+	bool isEdgeVar = false;
+
+	bool isEdge();
+	void rotate_edge(vector<Point> unrotated, double theta);
+};
+
 class PuzzlePiece {
 public:
+	PuzzlePiece();
+	PuzzlePiece(Mat m, int i);
+
 	Mat img;
-	vector<Point> edges[4];  //edges in order: top, right, bottom, left
+	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
 	PuzzlePiece *leftNeighbor;
 	PuzzlePiece *rightNeighbor;
 	PuzzlePiece *upNeighbor;
 	PuzzlePiece *downNeighbor;
+	Rect core;
 	int number; //the number of the piece
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	int downIndex;
