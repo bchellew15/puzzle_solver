@@ -108,6 +108,21 @@ int main() {
 
 	cout << "First corner at index " << firstCornerIdx << endl;
 
+	// test: display full puzzle
+	// create a fake puzzle
+	PuzzlePiece *root2 = &pieces[firstCornerIdx];
+	root2->rightNeighbor = &pieces[3];
+	root2->rightIndex = 0;
+	pieces[3].rightIndex = 1;
+	root2->downNeighbor = &pieces[2];
+	pieces[2].rightNeighbor = &pieces[1];
+	pieces[2].rightIndex = 2;
+	pieces[1].rightIndex = 3;
+
+	displayPuzzle(root2);
+
+	return 0;
+
 	PuzzlePiece *root = &pieces[firstCornerIdx];
 	root->isConnected = true;
 	// todo: check if pieces matched reaches numPieces
@@ -184,6 +199,9 @@ int main() {
 		cout << endl;
 		rowCursor = rowCursor->downNeighbor;
 	}
+
+	// display completed puzzle
+	namedWindow("temp");
 
 	return 0;
 }
@@ -276,7 +294,7 @@ void PuzzlePiece::process(bool verbose) {
 	// todo: verify that # contours is > 0
 
 	// choose the biggest contour
-	vector<Point> outline = contours[0];
+	outline = contours[0];
 	int maxSize = contours[0].size();
 	for(int i = 1; i < contours.size(); i++) {
 		if(contours[i].size() > maxSize) {
@@ -571,6 +589,45 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 		temp.insert(temp.end(), outline.begin(), outline.begin() + secondIdx + 1);
 		return temp;
 	}
+}
+
+void displayPuzzle(PuzzlePiece *root) {
+	// should first traverse the puzzle to figure out the size needed.
+
+	// todo: create a fake puzzle to test this on so I don't have to run the full code
+
+	double width = root->core.width;
+	double height = root->core.height;
+	Mat completedPuzzle = Mat::zeros(root->img.size(), root->img.type());
+
+	int row = 0;
+	int col = 0;
+	PuzzlePiece *rowCursor = root;
+	while(rowCursor != nullptr) {
+		PuzzlePiece *columnCursor = rowCursor;
+		while(columnCursor != nullptr) {
+
+			// output
+			// todo: make a copy of img and translate it by col * width or something
+			// tried to make color mask but turned out looking blue.
+			Mat grey;
+			cvtColor(columnCursor->img, grey, COLOR_BGR2GRAY);
+			Mat mask = Mat::zeros(grey.size(), grey.type());
+			vector<vector<Point>> outlines = {columnCursor->outline};
+			drawContours(mask, outlines, -1, 255, -1); // thickness=-1 fills in the contour
+			columnCursor->img.copyTo(completedPuzzle, mask);
+
+			columnCursor = columnCursor->rightNeighbor;
+			col++;
+		}
+		cout << endl;
+		rowCursor = rowCursor->downNeighbor;
+		row++;
+	}
+
+	imshow("temp", completedPuzzle);
+	waitKey(0);
+	destroyWindow("temp");
 }
 
 //idea: use the maze searching algorithm to start with the first puzzle piece.
