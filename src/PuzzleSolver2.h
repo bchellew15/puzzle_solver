@@ -25,10 +25,10 @@ public:
 
 	Mat img;
 	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
-	PuzzlePiece *leftNeighbor;
-	PuzzlePiece *rightNeighbor;
-	PuzzlePiece *upNeighbor;
-	PuzzlePiece *downNeighbor;
+	PuzzlePiece *leftNeighbor = nullptr;
+	PuzzlePiece *rightNeighbor = nullptr;
+	PuzzlePiece *upNeighbor = nullptr;
+	PuzzlePiece *downNeighbor = nullptr;
 	Rect core;
 	int number; //the number of the piece
 	double theta = 0; // counterclockwise rotation required for the image of this piece
