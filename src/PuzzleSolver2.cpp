@@ -108,6 +108,7 @@ int main() {
 
 	cout << "First corner at index " << firstCornerIdx << endl;
 
+	/*
 	// test: display full puzzle
 	// create a fake puzzle
 	PuzzlePiece *root2 = &pieces[firstCornerIdx];
@@ -121,6 +122,7 @@ int main() {
 
 	displayPuzzle(root2);
 	return 0;
+	*/
 
 	PuzzlePiece *root = &pieces[firstCornerIdx];
 	root->isConnected = true;
@@ -200,7 +202,7 @@ int main() {
 	}
 
 	// display completed puzzle:
-	//
+	displayPuzzle(root);
 
 	return 0;
 }
@@ -214,6 +216,24 @@ double EdgeOfPiece::match(EdgeOfPiece other) {
 		flippedEdge[i].x = -other.edge[i].x;
 		flippedEdge[i].y = -other.edge[i].y;
 	}
+
+	// show the edges being compared
+	Mat blank = Mat::zeros(3000, 3000, CV_8UC3);
+	vector<vector<Point>> twoEdges = {edge, flippedEdge};
+	for(Point &p: twoEdges[0]) {
+		p.x += 1000;
+		p.y += 1000;
+	}
+	for(Point &p: twoEdges[1]) {
+		p.x += 1000;
+		p.y += 1000;
+	}
+	namedWindow("compare edges");
+	drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
+	drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
+	imshow("compare edges", blank);
+	waitKey(0);
+	destroyWindow("compare edges");
 
 	// I don't understand why this needs to be a pointer. otherwise it thinks computeDistance() is a virtual fn.
 	// also don't know what's up w the create() function
@@ -261,6 +281,10 @@ PuzzlePiece::PuzzlePiece(Mat m, int i, bool verbose) {
 // todo: break this into steps. first get the piece border, then split into chunks
 void PuzzlePiece::process(bool verbose) {
 	// check that the image is valid
+
+	// magic numbers
+	int scanWidth = 50;
+	int scanDepth = 50;
 
 	Mat grey;
 	Mat img_copy = img.clone();
@@ -341,9 +365,9 @@ void PuzzlePiece::process(bool verbose) {
 	// I guess you can add Points. why?
 
 	// first top
-	while(pointPolygonTest(outline, core.tl() + Point(50, 50), false) == -1
-			&& pointPolygonTest(outline, core.tl() + Point(core.width - 50, 50), false) == -1) {
-		core = Rect(core.tl().x, core.tl().y + 50, core.width, core.height - 50);
+	while(pointPolygonTest(outline, core.tl() + Point(scanWidth, scanDepth), false) == -1
+			&& pointPolygonTest(outline, core.tl() + Point(core.width - scanWidth, scanDepth), false) == -1) {
+		core = Rect(core.tl().x, core.tl().y + scanDepth, core.width, core.height - scanDepth);
 
 		// maybe return false in this case?
 		if (core.tl().y > core.br().y) {
@@ -352,9 +376,9 @@ void PuzzlePiece::process(bool verbose) {
 		}
 	}
 	// right
-	while(pointPolygonTest(outline, core.tl() + Point(core.width - 50, 50), false) == -1
-			&& pointPolygonTest(outline, core.br() + Point(-50, -50), false) == -1) {
-		core = Rect(core.tl().x, core.tl().y, core.width - 50, core.height);
+	while(pointPolygonTest(outline, core.tl() + Point(core.width - scanDepth, scanWidth), false) == -1
+			&& pointPolygonTest(outline, core.br() + Point(-scanDepth, -scanWidth), false) == -1) {
+		core = Rect(core.tl().x, core.tl().y, core.width - scanDepth, core.height);
 
 		// maybe return false in this case?
 		if (core.tl().x > core.br().x) {
@@ -362,7 +386,18 @@ void PuzzlePiece::process(bool verbose) {
 			return;
 		}
 	}
-	// for these pieces in particular, don't need to check bottom and left.
+	// bottom
+	while(pointPolygonTest(outline, core.br() + Point(-scanWidth, -scanDepth), false) == -1
+			&& pointPolygonTest(outline, core.br() + Point(-core.width + scanWidth, -scanDepth), false) == -1) {
+		core = Rect(core.tl().x, core.tl().y, core.width, core.height - scanDepth);
+
+		// maybe return false in this case?
+		if (core.br().y < core.tl().y) {
+			cout << "Failed to identify piece core." << endl;
+			return;
+		}
+	}
+	// for these pieces in particular, don't need to check left.
 
 	if(verbose) {
 		// show core
@@ -473,8 +508,9 @@ void PuzzlePiece::process(bool verbose) {
 	if(verbose) {
 			// reset the image and plot the edges
 			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
+			// shift the edges for easier plotting
 			for(int i = 0; i < 4; i++) {
-				for(Point &p: edge_vector[i]) {
+				for(Point &p: edge_vector[i]) {  // apparently contents of edge_vector are copies?
 					p.x += 1000;
 					p.y += 1000;
 				}
