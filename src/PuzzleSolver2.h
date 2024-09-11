@@ -46,7 +46,9 @@ public:
 	static int oppIndex(int index);
 	int downIndex();
 	void print();
-	void rotate(); //necessary? how did I code it before?
+	double rotationAngle();
+	double width();
+	double height();
 	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
 
 	//search through all the pieces until it finds a match

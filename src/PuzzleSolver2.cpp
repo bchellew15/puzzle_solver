@@ -120,7 +120,6 @@ int main() {
 	pieces[1].rightIndex = 3;
 
 	displayPuzzle(root2);
-
 	return 0;
 
 	PuzzlePiece *root = &pieces[firstCornerIdx];
@@ -200,8 +199,8 @@ int main() {
 		rowCursor = rowCursor->downNeighbor;
 	}
 
-	// display completed puzzle
-	namedWindow("temp");
+	// display completed puzzle:
+	//
 
 	return 0;
 }
@@ -579,6 +578,24 @@ void PuzzlePiece::print() {
 	cout << setw(4) << number;
 }
 
+double PuzzlePiece::rotationAngle() {
+	if(rightIndex == 1) return 0;
+	else if(rightIndex == 2) return 90;
+	else if(rightIndex == 3) return 180;
+	else return 270;
+}
+
+// flips width and height if piece is rotated
+double PuzzlePiece::width() {
+	if(rotationAngle() == 0 || rotationAngle() == 180) return core.width;
+	return core.height;
+}
+
+double PuzzlePiece::height() {
+	if(rotationAngle() == 0 || rotationAngle() == 180) return core.height;
+	return core.width;
+}
+
 // note: outline should be oriented counter clockwise bc outer contour. but, I don't think that guarantees sequential order.
 vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, int secondIdx) {
 	if(secondIdx > firstIdx) {
@@ -592,30 +609,109 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 }
 
 void displayPuzzle(PuzzlePiece *root) {
-	// should first traverse the puzzle to figure out the size needed.
 
-	// todo: create a fake puzzle to test this on so I don't have to run the full code
+	namedWindow("temp");
 
-	double width = root->core.width;
-	double height = root->core.height;
-	Mat completedPuzzle = Mat::zeros(root->img.size(), root->img.type());
+	// traverse the puzzle to figure out the size needed.
+	double width = root->width();
+	double height = root->height();
+	cout << "width: " << width << endl;
+	cout << "height: " << height << endl;
+	int numPiecesX = 0;
+	int numPiecesY = 0;
+	PuzzlePiece *cursor = root;
+	while(cursor != nullptr) {
+		numPiecesY++;
+		cursor = cursor->downNeighbor;
+	}
+	cursor = root;
+	while(cursor != nullptr) {
+		numPiecesX++;
+		cursor = cursor->rightNeighbor;
+	}
+	Mat grey;
+	cvtColor(root->img, grey, COLOR_BGR2GRAY);
+	Mat completedPuzzle = Mat::zeros(numPiecesX * height, numPiecesY * width, grey.type());
+	cout << "completed puzzle size: " << completedPuzzle.size() << endl;
 
+	// loop through the pieces and copy to completed image
 	int row = 0;
 	int col = 0;
 	PuzzlePiece *rowCursor = root;
 	while(rowCursor != nullptr) {
 		PuzzlePiece *columnCursor = rowCursor;
+		col = 0;
 		while(columnCursor != nullptr) {
 
-			// output
-			// todo: make a copy of img and translate it by col * width or something
-			// tried to make color mask but turned out looking blue.
-			Mat grey;
-			cvtColor(columnCursor->img, grey, COLOR_BGR2GRAY);
-			Mat mask = Mat::zeros(grey.size(), grey.type());
-			vector<vector<Point>> outlines = {columnCursor->outline};
+			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
+			// use the new top-left corner in the calculations instead.
+
+			// transformations: rotate and shift the puzzle piece
+			cvtColor(columnCursor->img, grey, COLOR_BGR2GRAY); // not sure what happens bc grey already exists
+			Mat transformed = Mat::zeros(completedPuzzle.size(), completedPuzzle.type());
+			cout << "show grey image" << endl;
+			imshow("temp", grey);
+			waitKey(0);
+			cout << "top left coordinate: " << columnCursor->core.tl() << endl;
+			cout << "x shift: " << col * width - columnCursor->core.tl().x << endl;
+			cout << "y shift: " << row * height - columnCursor->core.tl().y << endl;
+			// rotate about the center of the piece
+			Point rotationCenter = Point(columnCursor->core.tl().x + columnCursor->core.width/2, columnCursor->core.tl().y + columnCursor->core.height/2);
+			Mat t1 = getRotationMatrix2D(rotationCenter, columnCursor->rotationAngle(), 1);
+			cout << "rotation matrix: " << t1 << endl;
+			warpAffine(grey, grey, t1, grey.size());
+			cout << "after just rotation:" << endl;
+			imshow("temp", grey);
+			waitKey(0);
+			// now translate
+			// could do in one step; I'm counting on no clipping after the rotation
+			double shift_x = 0;
+			double shift_y = 0;
+			if(columnCursor->rotationAngle() == 90 || columnCursor->rotationAngle() == 270) {
+				cout << "shifting TL corner bc of rotation" << endl;
+				Point rotated_tl = columnCursor->core.tl()
+						+ Point(columnCursor->core.width/2 - columnCursor->core.height/2,
+								columnCursor->core.height/2 - columnCursor->core.width/2);
+				cout << "new TL corner: " << rotated_tl << endl;
+				shift_x = col * width - rotated_tl.x;
+				shift_y = row * height - rotated_tl.y;
+			} else {
+				shift_x = col * width - columnCursor->core.tl().x;
+				shift_y = row * height - columnCursor->core.tl().y;
+			}
+			cout << "shift x: " << shift_x << endl;
+			cout << "shift y: " << shift_y << endl;
+			double t_values[] = {1, 0, shift_x,
+								0, 1, shift_y};
+			Mat t2 = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
+			cout << "translation matrix: " << t2 << endl;
+			warpAffine(grey, transformed, t2, transformed.size());
+			cout << "show completed transformation" << endl;
+			imshow("temp", transformed);
+			waitKey(0);
+
+			// also need to shift and rotate the outline
+			vector<Point> shifted_outline = columnCursor->outline;  // verify how this assignment works
+			// shifted_outline += Point(col * width - columnCursor->core.tl().x, row * height - columnCursor->core.tl().y);
+			for(Point &p: shifted_outline) {
+				double temp_x = p.x;
+				p.x = t1.at<double>(0, 0) * p.x + t1.at<double>(0, 1) * p.y + t1.at<double>(0, 2) + shift_x;
+				p.y = t1.at<double>(1, 0) * temp_x + t1.at<double>(1, 1) * p.y + t1.at<double>(1, 2) + shift_y;
+			}
+
+			// issue: tried to make color mask but turned out looking blue.
+
+			// copy the data within the piece outline to the final image
+			Mat mask = Mat::zeros(transformed.size(), transformed.type());
+			vector<vector<Point>> outlines = {shifted_outline};
 			drawContours(mask, outlines, -1, 255, -1); // thickness=-1 fills in the contour
-			columnCursor->img.copyTo(completedPuzzle, mask);
+			cout << "show mask" << endl;
+			imshow("temp", mask);
+			waitKey(0);
+			transformed.copyTo(completedPuzzle, mask);
+			cout << "show completed puzzle with new piece" << endl;
+			imshow("temp", completedPuzzle);
+			waitKey(0);
 
 			columnCursor = columnCursor->rightNeighbor;
 			col++;
@@ -625,8 +721,6 @@ void displayPuzzle(PuzzlePiece *root) {
 		row++;
 	}
 
-	imshow("temp", completedPuzzle);
-	waitKey(0);
 	destroyWindow("temp");
 }
 
