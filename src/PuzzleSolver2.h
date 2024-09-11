@@ -60,6 +60,6 @@ public:
 	//PuzzlePiece();
 };
 
-void displayPuzzle(PuzzlePiece *root);
+void displayPuzzle(PuzzlePiece *root, bool verbose=false, bool checkRotation=true);
 
 #endif /* PUZZLESOLVER2_H_ */

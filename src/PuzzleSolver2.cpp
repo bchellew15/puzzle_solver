@@ -608,7 +608,7 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 	}
 }
 
-void displayPuzzle(PuzzlePiece *root) {
+void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 
 	namedWindow("temp");
 
@@ -631,7 +631,8 @@ void displayPuzzle(PuzzlePiece *root) {
 	}
 	Mat grey;
 	cvtColor(root->img, grey, COLOR_BGR2GRAY);
-	Mat completedPuzzle = Mat::zeros(numPiecesX * height, numPiecesY * width, grey.type());
+	double edgeLength = max(numPiecesX * height, numPiecesY * width); // leave room for rotating at the end
+	Mat completedPuzzle = Mat::zeros(edgeLength, edgeLength, grey.type());
 	cout << "completed puzzle size: " << completedPuzzle.size() << endl;
 
 	// loop through the pieces and copy to completed image
@@ -649,9 +650,11 @@ void displayPuzzle(PuzzlePiece *root) {
 			// transformations: rotate and shift the puzzle piece
 			cvtColor(columnCursor->img, grey, COLOR_BGR2GRAY); // not sure what happens bc grey already exists
 			Mat transformed = Mat::zeros(completedPuzzle.size(), completedPuzzle.type());
-			cout << "show grey image" << endl;
-			imshow("temp", grey);
-			waitKey(0);
+			if(verbose) {
+				cout << "show grey image" << endl;
+				imshow("temp", grey);
+				waitKey(0);
+			}
 			cout << "top left coordinate: " << columnCursor->core.tl() << endl;
 			cout << "x shift: " << col * width - columnCursor->core.tl().x << endl;
 			cout << "y shift: " << row * height - columnCursor->core.tl().y << endl;
@@ -660,9 +663,11 @@ void displayPuzzle(PuzzlePiece *root) {
 			Mat t1 = getRotationMatrix2D(rotationCenter, columnCursor->rotationAngle(), 1);
 			cout << "rotation matrix: " << t1 << endl;
 			warpAffine(grey, grey, t1, grey.size());
-			cout << "after just rotation:" << endl;
-			imshow("temp", grey);
-			waitKey(0);
+			if(verbose) {
+				cout << "after just rotation:" << endl;
+				imshow("temp", grey);
+				waitKey(0);
+			}
 			// now translate
 			// could do in one step; I'm counting on no clipping after the rotation
 			double shift_x = 0;
@@ -686,9 +691,11 @@ void displayPuzzle(PuzzlePiece *root) {
 			Mat t2 = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
 			cout << "translation matrix: " << t2 << endl;
 			warpAffine(grey, transformed, t2, transformed.size());
-			cout << "show completed transformation" << endl;
-			imshow("temp", transformed);
-			waitKey(0);
+			if(verbose) {
+				cout << "show completed transformation" << endl;
+				imshow("temp", transformed);
+				waitKey(0);
+			}
 
 			// also need to shift and rotate the outline
 			vector<Point> shifted_outline = columnCursor->outline;  // verify how this assignment works
@@ -705,13 +712,17 @@ void displayPuzzle(PuzzlePiece *root) {
 			Mat mask = Mat::zeros(transformed.size(), transformed.type());
 			vector<vector<Point>> outlines = {shifted_outline};
 			drawContours(mask, outlines, -1, 255, -1); // thickness=-1 fills in the contour
-			cout << "show mask" << endl;
-			imshow("temp", mask);
-			waitKey(0);
+			if(verbose) {
+				cout << "show mask" << endl;
+				imshow("temp", mask);
+				waitKey(0);
+			}
 			transformed.copyTo(completedPuzzle, mask);
-			cout << "show completed puzzle with new piece" << endl;
-			imshow("temp", completedPuzzle);
-			waitKey(0);
+			if(verbose) {
+				cout << "show completed puzzle with new piece" << endl;
+				imshow("temp", completedPuzzle);
+				waitKey(0);
+			}
 
 			columnCursor = columnCursor->rightNeighbor;
 			col++;
@@ -719,6 +730,24 @@ void displayPuzzle(PuzzlePiece *root) {
 		cout << endl;
 		rowCursor = rowCursor->downNeighbor;
 		row++;
+	}
+
+	if(checkRotation) cout << "Enter degrees of clockwise rotation" << endl;
+
+	// show completed puzzle
+	imshow("temp", completedPuzzle);
+	waitKey(0);
+
+	if(checkRotation) {
+		string rotationStr;
+		cin >> rotationStr; // not sure how this interacts with waitKey()
+		int fullPuzzleRotation = stoi(rotationStr); // error handling
+		Point puzzleCenter = Point((numPiecesX * height) / 2, (numPiecesY * width) / 2);
+		Mat t3 = getRotationMatrix2D(puzzleCenter, fullPuzzleRotation, 1);
+		Mat rotatedPuzzle = Mat::zeros(completedPuzzle.size(), completedPuzzle.type()); // don't want any remnants after the rotation
+		warpAffine(completedPuzzle, rotatedPuzzle, t3, rotatedPuzzle.size());
+		imshow("temp", rotatedPuzzle);
+		waitKey(0);
 	}
 
 	destroyWindow("temp");
