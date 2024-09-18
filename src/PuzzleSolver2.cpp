@@ -383,7 +383,22 @@ void PuzzlePiece::process(bool verbose) {
 			maxSize = currentArea;
 			outline = contours[i];
 		}
+		else if(currentArea > secondMaxSize) {
+			secondMaxSize = currentArea;
+			coin = contours[i];
+		}
 	}
+
+	// show all the contours and print their areas
+	/*
+	img_copy = img.clone();
+	for(int i = 0; i < contours.size(); i++) {
+		cout << contourArea(contours[i]) << endl;
+		drawContours(img_copy, contours, i, blue, 5);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
+	*/
 
 	// check which one is the circle
 	double outlineArea = contourArea(outline);
