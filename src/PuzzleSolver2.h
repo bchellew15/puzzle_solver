@@ -62,4 +62,6 @@ public:
 
 void displayPuzzle(PuzzlePiece *root, bool verbose=false, bool checkRotation=true);
 
+double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2);
+
 #endif /* PUZZLESOLVER2_H_ */
