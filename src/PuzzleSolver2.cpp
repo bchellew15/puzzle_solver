@@ -34,11 +34,14 @@ using namespace cv;
 int main() {
 
 	// get number of pieces.
-	// todo: count the pieces in the folder
+	/*
 	string numPiecesStr;
 	cout << "How many pieces?" << endl;
 	cin >> numPiecesStr;
 	int numPieces = stoi(numPiecesStr);
+	*/
+
+	int numPieces = 4;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
@@ -56,6 +59,7 @@ int main() {
 	waitKey(0);
 	destroyWindow("temp");
 
+	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
 		pieces[i] = PuzzlePiece(images[i], i, false); // last argument is "verbose"
@@ -202,7 +206,7 @@ int main() {
 	}
 
 	// display completed puzzle:
-	displayPuzzle(root);
+	displayPuzzle(root, true);
 
 	return 0;
 }
@@ -229,16 +233,25 @@ double EdgeOfPiece::match(EdgeOfPiece other) {
 		p.y += 1000;
 	}
 	namedWindow("compare edges");
-	drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
-	drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
+	// drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
+	// drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
+	cout << "Edge 1 points: " << endl;
+	for(Point p: twoEdges[0]) {
+		circle(blank, p, 10, Scalar(255, 0, 0), 10);
+	}
+	for(Point p: twoEdges[1]) {
+		circle(blank, p, 10, Scalar(0, 0, 255), 10);
+	}
 	imshow("compare edges", blank);
 	waitKey(0);
 	destroyWindow("compare edges");
 
 	// I don't understand why this needs to be a pointer. otherwise it thinks computeDistance() is a virtual fn.
 	// also don't know what's up w the create() function
-	Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
-	return h->computeDistance(edge, flippedEdge);
+	// Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
+	// return h->computeDistance(edge, flippedEdge);
+
+	return edgeComparisonScore(edge, flippedEdge);
 
 	// return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
 }
@@ -296,25 +309,53 @@ void PuzzlePiece::process(bool verbose) {
 		waitKey(0);
 	}
 
-	// todo: smooth before thresholding
+	// Mat blurred;
+	// blur(grey, blurred, Size(5, 5));
+	// Mat unsharp = grey + grey - blurred; // what happens for values outside the range
+	// GaussianBlur(grey, grey, Size(3, 3), 3);
+//	double kernel_values[] = {-1, -1, -1, -1, 9, -1, -1, -1, -1};
+//	Mat sharp_kernel = Mat(3, 3, DataType<double>::type, kernel_values);
+//	filter2D(grey, grey, -1, sharp_kernel); // not sure what "depth" is (the -1)
+//	if(verbose) {
+//		cout << "sharp image" << endl;
+//		imshow("grey", grey);
+//		waitKey(0);
+//	}
 
-	// threshold computed for now by looking at histogram in python
-	// could compute the threshold by looking at histogram dropoff
-	threshold(grey, grey, 30, 255, THRESH_BINARY);
-
+	// try shrinking by factor of 5
+	Mat small_grey;
+	resize(grey, small_grey, Size(grey.size[1] / 10, grey.size[0] / 10));
 	if(verbose) {
-		imshow("grey", grey);
+		cout << "shrink image" << endl;
+		imshow("grey", small_grey);
 		waitKey(0);
 	}
 
-	// cout << "var type: " << grey.type() << endl;
+	Canny(small_grey, small_grey, 25, 50, 3);
+	if(verbose) {
+		cout << "detect edges" << endl;
+		imshow("grey", small_grey);
+		waitKey(0);
+	}
+	blur(small_grey, small_grey, Size(3, 3));
+	threshold(small_grey, small_grey, 30, 255, THRESH_BINARY); // threshold bc blurring will make some pixels nonzero
+
+	// threshold(grey, grey, 30, 255, THRESH_BINARY);
+
+	if(verbose) {
+		imshow("grey", small_grey);
+		waitKey(0);
+	}
 
 	vector<vector<Point>> contours;
 	// todo: try chain_approx_simple
 	// CHAIN_APPROX_NONE
-	findContours(grey, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	findContours(small_grey, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-	// todo: verify that # contours is > 0
+	if(contours.size() == 0) {
+		cout << "ERROR: no puzzle piece found" << endl;
+		return;
+	}
 
 	// choose the biggest contour
 	outline = contours[0];
@@ -324,6 +365,12 @@ void PuzzlePiece::process(bool verbose) {
 			maxSize = contours[i].size();
 			outline = contours[i];
 		}
+	}
+
+	// scale the contour back up to regular size
+	for(Point &p: outline) {
+		p.x *= 10;
+		p.y *= 10;
 	}
 
 	// put contour into a vector bc drawContours() requires that
@@ -787,6 +834,26 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 	}
 
 	destroyWindow("temp");
+}
+
+// should reverse the loop also to be more like hausdorff
+double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
+	double maxDistance = 0;
+	for(Point p1: edge1) {
+		double minDistance = sqrt(pow(p1.x - edge2[0].x, 2) + pow(p1.y - edge2[0].y, 2));
+		for(Point p2: edge2) {
+			double distance = sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
+			if(distance < minDistance) {
+				minDistance = distance;
+				// cout << "new min distance: " << distance << endl;
+			}
+		}
+		if (minDistance > maxDistance) {
+			maxDistance = minDistance;
+			cout << "new biggest min distance: " << maxDistance << endl;
+		}
+	}
+	return maxDistance;
 }
 
 //idea: use the maze searching algorithm to start with the first puzzle piece.
