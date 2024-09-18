@@ -47,9 +47,9 @@ int main() {
 	// load images
 	// todo: check if the file loaded properly
 	Mat images[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Image_Files/Piece";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16/Piece";
 	for( int i = 0; i < numPieces; i++) {
-		string filename = dir + to_string(i+1) + ".jpeg";
+		string filename = dir + to_string(i+1) + ".jpg";
 		images[i] = imread(filename);
 	}
 
@@ -62,7 +62,7 @@ int main() {
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i, false); // last argument is "verbose"
+		pieces[i] = PuzzlePiece(images[i], i, true); // last argument is "verbose"
 	}
 
 	// test: compare all edges to each other
@@ -235,12 +235,11 @@ double EdgeOfPiece::match(EdgeOfPiece other) {
 	namedWindow("compare edges");
 	// drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
 	// drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
-	cout << "Edge 1 points: " << endl;
 	for(Point p: twoEdges[0]) {
-		circle(blank, p, 10, Scalar(255, 0, 0), 10);
+		circle(blank, p, 5, Scalar(255, 0, 0), 10);
 	}
 	for(Point p: twoEdges[1]) {
-		circle(blank, p, 10, Scalar(0, 0, 255), 10);
+		circle(blank, p, 5, Scalar(0, 0, 255), 10);
 	}
 	imshow("compare edges", blank);
 	waitKey(0);
@@ -299,6 +298,12 @@ void PuzzlePiece::process(bool verbose) {
 	int scanWidth = 50;
 	int scanDepth = 50;
 
+	Scalar blue(255, 0, 0);
+	Scalar red(0, 0, 255);
+	Scalar green(0, 255, 0);
+	Scalar purple(128, 0, 128);
+	vector<Scalar> colors = {blue, red, green, purple};
+
 	Mat grey;
 	Mat img_copy = img.clone();
 	cvtColor(img_copy, grey, COLOR_BGR2GRAY); // imread stores as BGR
@@ -352,19 +357,50 @@ void PuzzlePiece::process(bool verbose) {
 	// CHAIN_APPROX_NONE
 	findContours(small_grey, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
 
-	if(contours.size() == 0) {
+	if(contours.size() < 2) {  // piece and coin
 		cout << "ERROR: no puzzle piece found" << endl;
 		return;
 	}
 
-	// choose the biggest contour
+	if(verbose) {
+		cout << "display all contours" << endl;
+		img_copy = img.clone();
+		drawContours(img_copy, contours, -1, blue, 5);
+		imshow("grey", img_copy);
+		waitKey(0);
+	}
+
+	// choose the biggest contours
 	outline = contours[0];
-	int maxSize = contours[0].size();
+	vector<Point> coin = contours[1];
+	double maxSize = contourArea(contours[0]);
+	double secondMaxSize = contourArea(contours[1]);
 	for(int i = 1; i < contours.size(); i++) {
-		if(contours[i].size() > maxSize) {
-			maxSize = contours[i].size();
+		double currentArea = contourArea(contours[i]);
+		if(currentArea > maxSize) {
+			secondMaxSize = maxSize;
+			coin = outline;
+			maxSize = currentArea;
 			outline = contours[i];
 		}
+	}
+
+	// check which one is the circle
+	double outlineArea = contourArea(outline);
+	double coinArea = contourArea(coin);
+	Point2f tempCenter;
+	float outlineRadius;  // making this type double didn't work
+	float coinRadius;
+	double pi = atan(1)*4;
+	minEnclosingCircle(outline, tempCenter, outlineRadius);
+	minEnclosingCircle(coin, tempCenter, coinRadius);
+	double coinCircleArea = pi * pow(coinRadius, 2);
+	double outlineCircleArea = pi * pow(outlineRadius, 2);
+	// swap outline and circle if needed
+	if(coinCircleArea / coinArea > outlineCircleArea > outlineArea) {
+		vector<Point> temp = coin;
+		coin = outline;
+		outline = temp;
 	}
 
 	// scale the contour back up to regular size
@@ -372,18 +408,21 @@ void PuzzlePiece::process(bool verbose) {
 		p.x *= 10;
 		p.y *= 10;
 	}
+	for(Point &p: coin) {
+		p.x *= 10;
+		p.y *= 10;
+	}
 
 	// put contour into a vector bc drawContours() requires that
 	contours.clear();
 	contours.push_back(outline);
+	contours.push_back(coin);
 
-	Scalar blue(255, 0, 0);
-	Scalar red(0, 0, 255);
-	Scalar green(0, 255, 0);
-	Scalar purple(128, 0, 128);
 	if(verbose) {
 		// display the outline
-		drawContours(img_copy, contours, -1, blue, 5);
+		img_copy = img.clone();
+		drawContours(img_copy, contours, 0, blue, 5);
+		drawContours(img_copy, contours, 1, red, 5);
 		imshow("grey", img_copy);
 		waitKey(0);
 	}
@@ -562,7 +601,6 @@ void PuzzlePiece::process(bool verbose) {
 					p.y += 1000;
 				}
 			}
-			vector<Scalar> colors = {blue, red, green, purple};
 			img_copy = img.clone(); // it's pointing to the same data I guess
 			for(int i = 0; i < 4; i++) {
 				if(!edges[i].isEdgeVar) drawContours(img_copy, edge_vector, i, colors[i], 5);
@@ -838,10 +876,30 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 
 // should reverse the loop also to be more like hausdorff
 double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
+
+	// ignore points past the edge
+	double minX1 = edge1[0].x;
+	double maxX1 = edge1[0].x;
+	for(Point p1: edge1) {
+		if (p1.x < minX1) minX1 = p1.x;
+		if (p1.x > maxX1) maxX1 = p1.x;
+	}
+	double minX2 = edge1[0].x;
+	double maxX2 = edge1[0].x;
+	for(Point p2: edge2) {
+		if (p2.x < minX2) minX2 = p2.x;
+		if (p2.x > maxX2) maxX2 = p2.x;
+	}
+	double minX = max(minX1, minX2);
+	double maxX = min(maxX1, maxX2);
+
+	// loop to find max distance
 	double maxDistance = 0;
 	for(Point p1: edge1) {
+		if(p1.x < minX || p1.x > maxX) continue;
 		double minDistance = sqrt(pow(p1.x - edge2[0].x, 2) + pow(p1.y - edge2[0].y, 2));
 		for(Point p2: edge2) {
+			if(p2.x < minX || p2.x > maxX) continue;
 			double distance = sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
 			if(distance < minDistance) {
 				minDistance = distance;
