@@ -355,30 +355,27 @@ void PuzzlePiece::process(bool verbose) {
 	for(MatIterator_<Vec3b> it = bottomRightCorner.begin<Vec3b>(), end=bottomRightCorner.end<Vec3b>(); it != end; it++) {
 		backgroundColors.push_back(*it);
 	}
-	double b_channel_min = backgroundColors[0][0];
-	double b_channel_max = backgroundColors[0][0];
-	double g_channel_min = backgroundColors[0][1];
-	double g_channel_max = backgroundColors[0][1];
-	double r_channel_min = backgroundColors[0][2];
-	double r_channel_max = backgroundColors[0][2];
+	double h_channel_min = backgroundColors[0][0];
+	double h_channel_max = backgroundColors[0][0];
+	double s_channel_min = backgroundColors[0][1];
+	double s_channel_max = backgroundColors[0][1];
+	double v_channel_min = backgroundColors[0][2];
+	double v_channel_max = backgroundColors[0][2];
 	for(Scalar c: backgroundColors) {
-		if(c[0] < b_channel_min) b_channel_min = c[0];
-		if(c[0] > b_channel_max) b_channel_max = c[0];
-		if(c[1] < g_channel_min) g_channel_min = c[1];
-		if(c[1] > g_channel_max) g_channel_max = c[1];
-		if(c[2] < r_channel_min) r_channel_min = c[2];
-		if(c[2] > r_channel_max) r_channel_max = c[2];
+		if(c[0] < h_channel_min) h_channel_min = c[0];
+		if(c[0] > h_channel_max) h_channel_max = c[0];
+		if(c[1] < s_channel_min) s_channel_min = c[1];
+		if(c[1] > s_channel_max) s_channel_max = c[1];
+		if(c[2] < v_channel_min) v_channel_min = c[2];
+		if(c[2] > v_channel_max) v_channel_max = c[2];
 	}
-	// cout << "b channel: " << b_channel_min << " to " << b_channel_max << endl;
-	// cout << "g channel: " << g_channel_min << " to " << g_channel_max << endl;
-	// cout << "r channel: " << r_channel_min << " to " << r_channel_max << endl;
-	double b_channel_width = b_channel_max - b_channel_min;
-	double g_channel_width = g_channel_max - g_channel_min;
-	double r_channel_width = r_channel_max - r_channel_min;
+	double h_channel_width = h_channel_max - h_channel_min;
+	double s_channel_width = s_channel_max - s_channel_min;
+	double v_channel_width = v_channel_max - v_channel_min;
 
 	int colorRangeBuffer = 3;  // fraction of color range that is added to each end
-	Scalar colorLowerBound = Scalar(max(0.0, b_channel_min - b_channel_width/colorRangeBuffer), max(0.0, g_channel_min - g_channel_width/colorRangeBuffer), max(0.0, r_channel_min - r_channel_width/colorRangeBuffer));
-	Scalar colorUpperBound = Scalar(min(255.0, b_channel_max + b_channel_width/colorRangeBuffer), min(255.0, g_channel_max + g_channel_width/colorRangeBuffer), min(255.0, r_channel_max + r_channel_width/colorRangeBuffer));
+	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/colorRangeBuffer), max(0.0, s_channel_min - s_channel_width/colorRangeBuffer), max(0.0, v_channel_min - v_channel_width/colorRangeBuffer));
+	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/colorRangeBuffer), min(255.0, s_channel_max + s_channel_width/colorRangeBuffer), min(255.0, v_channel_max + v_channel_width/colorRangeBuffer));
 	// Mat blurredImage;
 	// blur(img, blurredImage, Size(20, 20));
 	// cout << "color bounds: " << colorLowerBound << " " << colorUpperBound << endl;
