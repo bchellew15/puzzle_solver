@@ -11,6 +11,7 @@
 class EdgeOfPiece {
 public:
 	vector<Point> edge;
+	Point centroid;
 	bool isEdgeVar = false;
 
 	bool isEdge();

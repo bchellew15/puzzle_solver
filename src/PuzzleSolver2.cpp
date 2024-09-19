@@ -85,17 +85,19 @@ int main() {
 	}
 	*/
 
+	/*
 	// test a specific edge
 	int testIndex = 14;
-//	pieces[testIndex-1].isConnected=true;
-//	pieces[testIndex-1].rightIndex = 1;
-//	pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
+	pieces[testIndex-1].isConnected=true;
+	pieces[testIndex-1].rightIndex = 1;
+	pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
 	// and look at the closest matches:
 	pieces[testIndex-1].edges[1].match(pieces[5].edges[2], true); // correct match, score 59
 	pieces[testIndex-1].edges[1].match(pieces[2].edges[0], true); // score 65
 	pieces[testIndex-1].edges[1].match(pieces[6].edges[1], true); // score 49
 	pieces[testIndex-1].edges[1].match(pieces[11].edges[0], true);  // score 46
 	pieces[testIndex-1].edges[1].match(pieces[11].edges[2], true);  // score 48
+	*/
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -129,21 +131,30 @@ int main() {
 
 	cout << "First corner at index " << firstCornerIdx << endl;
 
-	/*
-	// test: display full puzzle
-	// create a fake puzzle
+	// test: create a fake puzzle for display
 	PuzzlePiece *root2 = &pieces[firstCornerIdx];
-	root2->rightNeighbor = &pieces[3];
-	root2->rightIndex = 0;
-	pieces[3].rightIndex = 1;
-	root2->downNeighbor = &pieces[2];
-	pieces[2].rightNeighbor = &pieces[1];
-	pieces[2].rightIndex = 2;
-	pieces[1].rightIndex = 3;
+	root2->rightIndex = 1;
+	root2->rightNeighbor = &pieces[4];
+	root2->downNeighbor = &pieces[0];
+
+	pieces[4].rightIndex = 0;
+	pieces[4].rightNeighbor = &pieces[6];
+
+	pieces[6].rightIndex = 0;
+	pieces[6].rightNeighbor = &pieces[7];
+
+	pieces[7].rightIndex = 0;
+
+	pieces[0].rightIndex = 3;
+	pieces[0].rightNeighbor = &pieces[13];
+
+	pieces[13].rightIndex = 1;
+	pieces[13].rightNeighbor = &pieces[5];
+
+	pieces[5].rightIndex = 0;
 
 	displayPuzzle(root2);
-	return 0;
-	*/
+	exit(0);
 
 	PuzzlePiece *root = &pieces[firstCornerIdx];
 	root->isConnected = true;
@@ -750,6 +761,13 @@ void PuzzlePiece::process(bool verbose) {
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
+	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
+		Moments m = moments(edges[i].edge);
+		int cx = int(m.m10/m.m00);
+		int cy = int(m.m01/m.m00);
+		edges[i].centroid = Point(cx, cy);
+	}
+
 	// todo: verify that these edges are reasonable e.g. have more than a couple points
 
 	if(verbose) {
@@ -974,10 +992,9 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 		numPiecesX++;
 		cursor = cursor->rightNeighbor;
 	}
-	Mat grey;
-	cvtColor(root->img, grey, COLOR_BGR2GRAY);
-	double edgeLength = max(numPiecesX * height, numPiecesY * width); // leave room for rotating at the end
-	Mat completedPuzzle = Mat::zeros(edgeLength, edgeLength, grey.type());
+	cout << "num pieces: " << numPiecesX << " by " << numPiecesY << endl;
+	double edgeLength = max(numPiecesX * width, numPiecesY * height); // leave room for rotating at the end
+	Mat completedPuzzle = Mat::zeros(edgeLength, edgeLength, root->img.type());
 	cout << "completed puzzle size: " << completedPuzzle.size() << endl;
 
 	// loop through the pieces and copy to completed image
@@ -992,12 +1009,16 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
 			// use the new top-left corner in the calculations instead.
 
+			// 1: check if this is first corner, attaching to left, or attaching to top.
+			// if top left, just shift top left corner to origin
+			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
+
 			// transformations: rotate and shift the puzzle piece
-			cvtColor(columnCursor->img, grey, COLOR_BGR2GRAY); // not sure what happens bc grey already exists
+			Mat img_copy = columnCursor->img.clone();
 			Mat transformed = Mat::zeros(completedPuzzle.size(), completedPuzzle.type());
 			if(verbose) {
-				cout << "show grey image" << endl;
-				imshow("temp", grey);
+				cout << "show image" << endl;
+				imshow("temp", columnCursor->img);
 				waitKey(0);
 			}
 			cout << "top left coordinate: " << columnCursor->core.tl() << endl;
@@ -1007,10 +1028,10 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			Point rotationCenter = Point(columnCursor->core.tl().x + columnCursor->core.width/2, columnCursor->core.tl().y + columnCursor->core.height/2);
 			Mat t1 = getRotationMatrix2D(rotationCenter, columnCursor->rotationAngle(), 1);
 			cout << "rotation matrix: " << t1 << endl;
-			warpAffine(grey, grey, t1, grey.size());
+			warpAffine(img_copy, img_copy, t1, img_copy.size());
 			if(verbose) {
 				cout << "after just rotation:" << endl;
-				imshow("temp", grey);
+				imshow("temp", img_copy);
 				waitKey(0);
 			}
 			// now translate
@@ -1035,7 +1056,7 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 								0, 1, shift_y};
 			Mat t2 = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
 			cout << "translation matrix: " << t2 << endl;
-			warpAffine(grey, transformed, t2, transformed.size());
+			warpAffine(img_copy, transformed, t2, transformed.size());
 			if(verbose) {
 				cout << "show completed transformation" << endl;
 				imshow("temp", transformed);
@@ -1056,7 +1077,7 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			// copy the data within the piece outline to the final image
 			Mat mask = Mat::zeros(transformed.size(), transformed.type());
 			vector<vector<Point>> outlines = {shifted_outline};
-			drawContours(mask, outlines, -1, 255, -1); // thickness=-1 fills in the contour
+			drawContours(mask, outlines, -1, Scalar(255, 255, 255), -1); // thickness=-1 fills in the contour
 			if(verbose) {
 				cout << "show mask" << endl;
 				imshow("temp", mask);
