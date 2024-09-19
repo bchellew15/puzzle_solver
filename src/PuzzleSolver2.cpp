@@ -62,7 +62,7 @@ int main() {
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i, true); // last argument is "verbose"
+		pieces[i] = PuzzlePiece(images[i], i, false); // last argument is "verbose"
 	}
 
 	// test: compare all edges to each other
@@ -210,6 +210,8 @@ int main() {
 
 	return 0;
 }
+
+double PuzzlePiece::scalingLength = 0;
 
 // close to 0 is a good match
 double EdgeOfPiece::match(EdgeOfPiece other) {
@@ -418,15 +420,20 @@ void PuzzlePiece::process(bool verbose) {
 		outline = temp;
 	}
 
-	// scale the contour back up to regular size
+	// scale everything up to regular size
+	// also include the scale factor
+	if(scalingLength == 0) {
+		scalingLength = coinRadius * resize_factor;
+	}
+	double normalize_factor = scalingLength / (coinRadius * resize_factor);
+	cout << "Piece " << number << " scaling by " << normalize_factor << endl;
 	for(Point &p: outline) {
-		p.x *= resize_factor;
-		p.y *= resize_factor;
+		p.x *= (resize_factor * normalize_factor);
+		p.y *= (resize_factor * normalize_factor);
 	}
-	for(Point &p: coin) {
-		p.x *= resize_factor;
-		p.y *= resize_factor;
-	}
+	// resize the original image
+	// not sure if this will reallocate properly
+	resize(img, img, Size(img.size[1] * normalize_factor, img.size[0] * normalize_factor));
 
 	/*
 	// smooth out the contour
