@@ -41,7 +41,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	int numPieces = 4;
+	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
@@ -49,7 +49,7 @@ int main() {
 	Mat images[numPieces];
 	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16/Piece";
 	for( int i = 0; i < numPieces; i++) {
-		string filename = dir + to_string(i+1) + ".jpg";
+		string filename = dir + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
 	}
 
@@ -294,10 +294,6 @@ PuzzlePiece::PuzzlePiece(Mat m, int i, bool verbose) {
 void PuzzlePiece::process(bool verbose) {
 	// check that the image is valid
 
-	// magic numbers
-	int scanWidth = 50;
-	int scanDepth = 20;
-
 	Scalar blue(255, 0, 0);
 	Scalar red(0, 0, 255);
 	Scalar green(0, 255, 0);
@@ -328,8 +324,11 @@ void PuzzlePiece::process(bool verbose) {
 //	}
 
 	// try shrinking by factor of 5
+	cout << "image size: " << img.size();
+	double resize_factor = int(img.size().width / 300);
+
 	Mat small_grey;
-	resize(grey, small_grey, Size(grey.size[1] / 10, grey.size[0] / 10));
+	resize(grey, small_grey, Size(grey.size[1] / resize_factor, grey.size[0] / resize_factor));
 	if(verbose) {
 		cout << "shrink image" << endl;
 		imshow("grey", small_grey);
@@ -403,16 +402,17 @@ void PuzzlePiece::process(bool verbose) {
 	// check which one is the circle
 	double outlineArea = contourArea(outline);
 	double coinArea = contourArea(coin);
-	Point2f tempCenter;
+	Point2f coinCenter;
+	Point2f outlineCenter;
 	float outlineRadius;  // making this type double didn't work
 	float coinRadius;
 	double pi = atan(1)*4;
-	minEnclosingCircle(outline, tempCenter, outlineRadius);
-	minEnclosingCircle(coin, tempCenter, coinRadius);
+	minEnclosingCircle(outline, outlineCenter, outlineRadius);
+	minEnclosingCircle(coin, coinCenter, coinRadius);
 	double coinCircleArea = pi * pow(coinRadius, 2);
 	double outlineCircleArea = pi * pow(outlineRadius, 2);
 	// swap outline and circle if needed
-	if(coinCircleArea / coinArea > outlineCircleArea > outlineArea) {
+	if(coinCircleArea / coinArea > outlineCircleArea / outlineArea) {
 		vector<Point> temp = coin;
 		coin = outline;
 		outline = temp;
@@ -420,12 +420,12 @@ void PuzzlePiece::process(bool verbose) {
 
 	// scale the contour back up to regular size
 	for(Point &p: outline) {
-		p.x *= 10;
-		p.y *= 10;
+		p.x *= resize_factor;
+		p.y *= resize_factor;
 	}
 	for(Point &p: coin) {
-		p.x *= 10;
-		p.y *= 10;
+		p.x *= resize_factor;
+		p.y *= resize_factor;
 	}
 
 	/*
@@ -462,6 +462,13 @@ void PuzzlePiece::process(bool verbose) {
 		imshow("grey", img_copy);
 		waitKey(0);
 	}
+
+	// set scan params based on size of bounding box.
+	// solves issue where images at different resolution were handled differently
+
+	// cout << "width " << boundingBox.width << ", height " << boundingBox.height << endl;
+	int scanWidth = max(boundingBox.width, boundingBox.height) / 16;
+	int scanDepth = max(boundingBox.width, boundingBox.height) / 40;
 
 	//decrease the bounding box to get the "core" rectangle of the piece
 	//todo: should have better way to choose increment (chose 50 pixels by trial and error)
@@ -513,6 +520,11 @@ void PuzzlePiece::process(bool verbose) {
 			}
 			top_buffer += scanDepth;
 		}
+
+		if(top_buffer > core.height) {
+			cout << "ERROR: unable to identify piece core" << endl;
+			break;
+		}
 	} while(!scanEnd);
 
 	core = Rect(core.tl().x, core.tl().y + top_buffer, core.width, core.height - top_buffer);
@@ -548,6 +560,11 @@ void PuzzlePiece::process(bool verbose) {
 				p.y -= scanDepth;
 			}
 			bottom_buffer += scanDepth;
+		}
+
+		if(bottom_buffer > core.height) {
+			cout << "ERROR: unable to identify piece core" << endl;
+			break;
 		}
 	} while(!scanEnd);
 
@@ -585,6 +602,11 @@ void PuzzlePiece::process(bool verbose) {
 			}
 			left_buffer += scanDepth;
 		}
+
+		if(left_buffer > core.width) {
+			cout << "ERROR: unable to identify piece core" << endl;
+			break;
+		}
 	} while(!scanEnd);
 
 	core = Rect(core.tl().x + left_buffer, core.tl().y, core.width - left_buffer, core.height);
@@ -620,6 +642,11 @@ void PuzzlePiece::process(bool verbose) {
 				p.x -= scanDepth;
 			}
 			right_buffer += scanDepth;
+		}
+
+		if(right_buffer > core.width) {
+			cout << "ERROR: unable to identify piece core" << endl;
+			break;
 		}
 	} while(!scanEnd);
 
@@ -671,6 +698,8 @@ void PuzzlePiece::process(bool verbose) {
 	edges[1].edge = constructEdge(outline, br_index, tr_index);
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
+
+	// todo: verify that these edges are reasonable e.g. have more than a couple points
 
 	if(verbose) {
 		// reset the image and plot the edges
