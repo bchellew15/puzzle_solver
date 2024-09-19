@@ -139,21 +139,35 @@ int main() {
 
 	pieces[4].rightIndex = 0;
 	pieces[4].rightNeighbor = &pieces[6];
+	pieces[4].leftNeighbor = &pieces[firstCornerIdx];
 
 	pieces[6].rightIndex = 0;
 	pieces[6].rightNeighbor = &pieces[7];
+	pieces[6].leftNeighbor = &pieces[4];
 
 	pieces[7].rightIndex = 0;
+	pieces[7].leftNeighbor = &pieces[6];
 
 	pieces[0].rightIndex = 3;
 	pieces[0].rightNeighbor = &pieces[13];
+	pieces[0].downNeighbor = &pieces[1];
+	pieces[0].upNeighbor = &pieces[firstCornerIdx];
 
 	pieces[13].rightIndex = 1;
 	pieces[13].rightNeighbor = &pieces[5];
+	pieces[13].leftNeighbor = &pieces[0];
 
 	pieces[5].rightIndex = 0;
+	pieces[5].rightNeighbor = &pieces[14];
+	pieces[5].leftNeighbor = &pieces[13];
 
-	displayPuzzle(root2);
+	pieces[14].rightIndex = 1;
+	pieces[14].leftNeighbor = &pieces[5];
+
+	pieces[1].rightIndex = 3;
+	pieces[1].upNeighbor = &pieces[0];
+
+	displayPuzzle(root2, true);
 	exit(0);
 
 	PuzzlePiece *root = &pieces[firstCornerIdx];
@@ -194,7 +208,7 @@ int main() {
 				cout << "pieces matched: " << piecesMatched << endl;
 				matchingPiece->isConnected = true;
 				columnCursor->rightNeighbor = matchingPiece;
-				matchingPiece->leftNeighbor = columnCursor; // not reallly necessary
+				matchingPiece->leftNeighbor = columnCursor; // not really necessary
 				matchingPiece->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
 
 				columnCursor = matchingPiece;
@@ -1009,8 +1023,6 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
 			// use the new top-left corner in the calculations instead.
 
-			// 1: check if this is first corner, attaching to left, or attaching to top.
-			// if top left, just shift top left corner to origin
 			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
 
 			// transformations: rotate and shift the puzzle piece
@@ -1034,26 +1046,42 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 				imshow("temp", img_copy);
 				waitKey(0);
 			}
-			// now translate
-			// could do in one step; I'm counting on no clipping after the rotation
-			double shift_x = 0;
-			double shift_y = 0;
-			if(columnCursor->rotationAngle() == 90 || columnCursor->rotationAngle() == 270) {
-				cout << "shifting TL corner bc of rotation" << endl;
-				Point rotated_tl = columnCursor->core.tl()
-						+ Point(columnCursor->core.width/2 - columnCursor->core.height/2,
-								columnCursor->core.height/2 - columnCursor->core.width/2);
-				cout << "new TL corner: " << rotated_tl << endl;
-				shift_x = col * width - rotated_tl.x;
-				shift_y = row * height - rotated_tl.y;
-			} else {
-				shift_x = col * width - columnCursor->core.tl().x;
-				shift_y = row * height - columnCursor->core.tl().y;
+			// rotate the centroids of the current piece
+			for(int i = 0; i < 4; i++) {
+				double cx = columnCursor->edges[i].centroid.x;
+				double cy = columnCursor->edges[i].centroid.y;
+				columnCursor->edges[i].centroid.x = t1.at<double>(0, 0) * cx + t1.at<double>(0, 1) * cy + t1.at<double>(0, 2);
+				columnCursor->edges[i].centroid.y = t1.at<double>(1, 0) * cx + t1.at<double>(1, 1) * cy + t1.at<double>(1, 2);
 			}
-			cout << "shift x: " << shift_x << endl;
-			cout << "shift y: " << shift_y << endl;
-			double t_values[] = {1, 0, shift_x,
-								0, 1, shift_y};
+
+			// now translate
+			// should do in one step; I'm counting on no clipping after the rotation
+			// note: could do this check implicitly by waiting until this while loop exits to the other one
+			Point2f shift; // about converting int to double if I just do Point
+
+			if(columnCursor->leftNeighbor == nullptr && columnCursor->upNeighbor == nullptr) {  // this is top left corner
+				if(columnCursor->rotationAngle() == 90 || columnCursor->rotationAngle() == 270) {
+					cout << "shifting TL corner bc of rotation" << endl;
+					Point rotated_tl = columnCursor->core.tl()
+							+ Point(columnCursor->core.width/2 - columnCursor->core.height/2,
+									columnCursor->core.height/2 - columnCursor->core.width/2);
+					// cout << "new TL corner: " << rotated_tl << endl;
+					shift = -rotated_tl;
+				} else {
+					shift = -columnCursor->core.tl();
+				}
+			} else if(columnCursor->leftNeighbor == nullptr) {  // this is left edge
+				Point prevCentroid = columnCursor->upNeighbor->edges[columnCursor->upNeighbor->downIndex()].centroid;
+				Point currentCentroid = columnCursor->edges[PuzzlePiece::oppIndex(columnCursor->downIndex())].centroid;
+				shift = prevCentroid - currentCentroid;
+			} else {  // most pieces
+				Point prevCentroid = columnCursor->leftNeighbor->edges[columnCursor->leftNeighbor->rightIndex].centroid;
+				Point currentCentroid = columnCursor->edges[PuzzlePiece::oppIndex(columnCursor->rightIndex)].centroid;
+				shift = prevCentroid - currentCentroid;
+			}
+
+			double t_values[] = {1, 0, shift.x,
+												0, 1, shift.y};
 			Mat t2 = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
 			cout << "translation matrix: " << t2 << endl;
 			warpAffine(img_copy, transformed, t2, transformed.size());
@@ -1063,16 +1091,19 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 				waitKey(0);
 			}
 
-			// also need to shift and rotate the outline
+			// also need to shift AND rotate the outline
 			vector<Point> shifted_outline = columnCursor->outline;  // verify how this assignment works
 			// shifted_outline += Point(col * width - columnCursor->core.tl().x, row * height - columnCursor->core.tl().y);
 			for(Point &p: shifted_outline) {
 				double temp_x = p.x;
-				p.x = t1.at<double>(0, 0) * p.x + t1.at<double>(0, 1) * p.y + t1.at<double>(0, 2) + shift_x;
-				p.y = t1.at<double>(1, 0) * temp_x + t1.at<double>(1, 1) * p.y + t1.at<double>(1, 2) + shift_y;
+				p.x = t1.at<double>(0, 0) * p.x + t1.at<double>(0, 1) * p.y + t1.at<double>(0, 2) + shift.x;
+				p.y = t1.at<double>(1, 0) * temp_x + t1.at<double>(1, 1) * p.y + t1.at<double>(1, 2) + shift.y;
 			}
-
-			// issue: tried to make color mask but turned out looking blue.
+			// and shift the centroids
+			for(int i = 0; i < 4; i++) {
+				columnCursor->edges[i].centroid.x += shift.x;
+				columnCursor->edges[i].centroid.y += shift.y;
+			}
 
 			// copy the data within the piece outline to the final image
 			Mat mask = Mat::zeros(transformed.size(), transformed.type());
