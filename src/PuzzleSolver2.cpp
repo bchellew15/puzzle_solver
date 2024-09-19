@@ -41,7 +41,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	bool process_verbose = true;
+	bool process_verbose = false;
 	bool match_verbose = false;
 
 	int numPieces = 16;
@@ -68,6 +68,8 @@ int main() {
 		pieces[i] = PuzzlePiece(images[i], i, process_verbose); // last argument is "verbose"
 	}
 
+	cout << "checkpoint" << endl;
+
 	// test: compare all edges to each other
 	/*
 	for(int i = 0; i < numPieces-1; i++) {
@@ -82,6 +84,18 @@ int main() {
 		}
 	}
 	*/
+
+	// test a specific edge
+	int testIndex = 14;
+//	pieces[testIndex-1].isConnected=true;
+//	pieces[testIndex-1].rightIndex = 1;
+//	pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
+	// and look at the closest matches:
+	pieces[testIndex-1].edges[1].match(pieces[5].edges[2], true); // correct match, score 59
+	pieces[testIndex-1].edges[1].match(pieces[2].edges[0], true); // score 65
+	pieces[testIndex-1].edges[1].match(pieces[6].edges[1], true); // score 49
+	pieces[testIndex-1].edges[1].match(pieces[11].edges[0], true);  // score 46
+	pieces[testIndex-1].edges[1].match(pieces[11].edges[2], true);  // score 48
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -270,7 +284,7 @@ double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 	// Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
 	// return h->computeDistance(edge, flippedEdge);
 
-	return edgeComparisonScore(edge, flippedEdge);
+	return max(edgeComparisonScore(edge, flippedEdge), edgeComparisonScore(flippedEdge, edge));
 
 	// return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
 }
@@ -355,9 +369,9 @@ void PuzzlePiece::process(bool verbose) {
 		if(c[2] < r_channel_min) r_channel_min = c[2];
 		if(c[2] > r_channel_max) r_channel_max = c[2];
 	}
-	cout << "b channel: " << b_channel_min << " to " << b_channel_max << endl;
-	cout << "g channel: " << g_channel_min << " to " << g_channel_max << endl;
-	cout << "r channel: " << r_channel_min << " to " << r_channel_max << endl;
+	// cout << "b channel: " << b_channel_min << " to " << b_channel_max << endl;
+	// cout << "g channel: " << g_channel_min << " to " << g_channel_max << endl;
+	// cout << "r channel: " << r_channel_min << " to " << r_channel_max << endl;
 	double b_channel_width = b_channel_max - b_channel_min;
 	double g_channel_width = g_channel_max - g_channel_min;
 	double r_channel_width = r_channel_max - r_channel_min;
@@ -367,7 +381,7 @@ void PuzzlePiece::process(bool verbose) {
 	Scalar colorUpperBound = Scalar(min(255.0, b_channel_max + b_channel_width/colorRangeBuffer), min(255.0, g_channel_max + g_channel_width/colorRangeBuffer), min(255.0, r_channel_max + r_channel_width/colorRangeBuffer));
 	// Mat blurredImage;
 	// blur(img, blurredImage, Size(20, 20));
-	cout << "color bounds: " << colorLowerBound << " " << colorUpperBound << endl;
+	// cout << "color bounds: " << colorLowerBound << " " << colorUpperBound << endl;
 	Mat color_mask;
 	inRange(img_hsv, colorLowerBound, colorUpperBound, color_mask);
 	color_mask = 255 - color_mask;  // invert
@@ -551,7 +565,7 @@ void PuzzlePiece::process(bool verbose) {
 
 		// check if ratio is > 50%
 		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
 		if(occupiedRatio > 0.5) {
 			scanEnd = true;
 		} else {
@@ -592,7 +606,7 @@ void PuzzlePiece::process(bool verbose) {
 
 		// check if ratio is > 50%
 		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
 		if(occupiedRatio > 0.5) {
 			scanEnd = true;
 		} else {
