@@ -41,13 +41,16 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
+	bool process_verbose = false;
+	bool match_verbose = false;
+
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
 	// todo: check if the file loaded properly
 	Mat images[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16/Piece";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_green/Piece";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -62,7 +65,7 @@ int main() {
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i, false); // last argument is "verbose"
+		pieces[i] = PuzzlePiece(images[i], i, process_verbose); // last argument is "verbose"
 	}
 
 	// test: compare all edges to each other
@@ -156,7 +159,7 @@ int main() {
 			} else {
 				// find a match
 				cout << "Looking for right match" << endl;
-				pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces);
+				pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces, match_verbose);
 				PuzzlePiece *matchingPiece = matchPair.first;
 				piecesMatched++;
 				matchingPiece->isConnected = true;
@@ -176,7 +179,7 @@ int main() {
 		} else {
 			// find a match
 			cout << "Looking for down match" << endl;
-			pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces);
+			pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces, match_verbose);
 			PuzzlePiece *matchingPiece = matchPair.first;
 			piecesMatched++;
 			matchingPiece->isConnected = true;
@@ -214,7 +217,7 @@ int main() {
 double PuzzlePiece::scalingLength = 0;
 
 // close to 0 is a good match
-double EdgeOfPiece::match(EdgeOfPiece other) {
+double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 
 	// prep by rotating one edge (by flipping twice)
 	vector<Point> flippedEdge = vector<Point>(other.edge.size());
@@ -234,18 +237,21 @@ double EdgeOfPiece::match(EdgeOfPiece other) {
 		p.x += 1000;
 		p.y += 1000;
 	}
-	namedWindow("compare edges");
-	// drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
-	// drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
-	for(Point p: twoEdges[0]) {
-		circle(blank, p, 5, Scalar(255, 0, 0), 10);
+
+	if(verbose) {
+		namedWindow("compare edges");
+		// drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
+		// drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
+		for(Point p: twoEdges[0]) {
+			circle(blank, p, 5, Scalar(255, 0, 0), 10);
+		}
+		for(Point p: twoEdges[1]) {
+			circle(blank, p, 5, Scalar(0, 0, 255), 10);
+		}
+		imshow("compare edges", blank);
+		waitKey(0);
+		destroyWindow("compare edges");
 	}
-	for(Point p: twoEdges[1]) {
-		circle(blank, p, 5, Scalar(0, 0, 255), 10);
-	}
-	imshow("compare edges", blank);
-	waitKey(0);
-	destroyWindow("compare edges");
 
 	// I don't understand why this needs to be a pointer. otherwise it thinks computeDistance() is a virtual fn.
 	// also don't know what's up w the create() function
@@ -302,70 +308,74 @@ void PuzzlePiece::process(bool verbose) {
 	Scalar purple(128, 0, 128);
 	vector<Scalar> colors = {blue, red, green, purple};
 
-	Mat grey;
-	Mat img_copy = img.clone();
-	cvtColor(img_copy, grey, COLOR_BGR2GRAY); // imread stores as BGR
+	// identify background color
+	vector<Vec3b> backgroundColors;
+	int cornerSize = 50;
+	Mat topLeftCorner = img(Rect(0, 0, cornerSize, cornerSize));
+	Mat topRightCorner = img(Rect(img.size().width-cornerSize, 0, cornerSize, cornerSize));
+	Mat bottomLeftCorner = img(Rect(0, img.size().height-cornerSize, cornerSize, cornerSize));
+	Mat bottomRightCorner = img(Rect(img.size().width-cornerSize, img.size().height-cornerSize, cornerSize, cornerSize));
+	for(MatIterator_<Vec3b> it = topLeftCorner.begin<Vec3b>(), end=topLeftCorner.end<Vec3b>(); it != end; it++) {
+		backgroundColors.push_back(*it);
+	}
+	for(MatIterator_<Vec3b> it = topRightCorner.begin<Vec3b>(), end=topRightCorner.end<Vec3b>(); it != end; it++) {
+		backgroundColors.push_back(*it);
+	}
+	for(MatIterator_<Vec3b> it = bottomLeftCorner.begin<Vec3b>(), end=bottomLeftCorner.end<Vec3b>(); it != end; it++) {
+		backgroundColors.push_back(*it);
+	}
+	for(MatIterator_<Vec3b> it = bottomRightCorner.begin<Vec3b>(), end=bottomRightCorner.end<Vec3b>(); it != end; it++) {
+		backgroundColors.push_back(*it);
+	}
+	double b_channel_min = backgroundColors[0][0];
+	double b_channel_max = backgroundColors[0][0];
+	double g_channel_min = backgroundColors[0][1];
+	double g_channel_max = backgroundColors[0][1];
+	double r_channel_min = backgroundColors[0][2];
+	double r_channel_max = backgroundColors[0][2];
+	for(Scalar c: backgroundColors) {
+		if(c[0] < b_channel_min) b_channel_min = c[0];
+		if(c[0] > b_channel_max) b_channel_max = c[0];
+		if(c[1] < g_channel_min) g_channel_min = c[1];
+		if(c[1] > g_channel_max) g_channel_max = c[1];
+		if(c[2] < r_channel_min) r_channel_min = c[2];
+		if(c[2] > r_channel_max) r_channel_max = c[2];
+	}
+	cout << "b channel: " << b_channel_min << " to " << b_channel_max << endl;
+	cout << "g channel: " << g_channel_min << " to " << g_channel_max << endl;
+	cout << "r channel: " << r_channel_min << " to " << r_channel_max << endl;
 
+	Mat color_mask;
+	Scalar colorLowerBound = Scalar(b_channel_min, g_channel_min, r_channel_min);
+	Scalar colorUpperBound = Scalar(b_channel_max, g_channel_max, r_channel_max);
+	// Mat blurredImage;
+	// blur(img, blurredImage, Size(20, 20));
+	inRange(img, colorLowerBound, colorUpperBound, color_mask);
+	color_mask = 255 - color_mask;  // invert
 	if(verbose) {
 		namedWindow("grey");
-		imshow("grey", grey);
+		imshow("grey", color_mask);
 		waitKey(0);
 	}
-
-	// Mat blurred;
-	// blur(grey, blurred, Size(5, 5));
-	// Mat unsharp = grey + grey - blurred; // what happens for values outside the range
-	// GaussianBlur(grey, grey, Size(3, 3), 3);
-//	double kernel_values[] = {-1, -1, -1, -1, 9, -1, -1, -1, -1};
-//	Mat sharp_kernel = Mat(3, 3, DataType<double>::type, kernel_values);
-//	filter2D(grey, grey, -1, sharp_kernel); // not sure what "depth" is (the -1)
-//	if(verbose) {
-//		cout << "sharp image" << endl;
-//		imshow("grey", grey);
-//		waitKey(0);
-//	}
-
-	// try shrinking by factor of 5
-	cout << "image size: " << img.size();
-	double resize_factor = int(img.size().width / 300);
-
-	Mat small_grey;
-	resize(grey, small_grey, Size(grey.size[1] / resize_factor, grey.size[0] / resize_factor));
+	Mat close_kernel = getStructuringElement(MORPH_ELLIPSE, Size(10, 10));
+	filter2D(color_mask, color_mask, -1, close_kernel);
 	if(verbose) {
-		cout << "shrink image" << endl;
-		imshow("grey", small_grey);
-		waitKey(0);
-	}
-
-	Canny(small_grey, small_grey, 40, 80, 3);
-	if(verbose) {
-		cout << "detect edges" << endl;
-		imshow("grey", small_grey);
-		waitKey(0);
-	}
-	blur(small_grey, small_grey, Size(3, 3));
-	threshold(small_grey, small_grey, 30, 255, THRESH_BINARY); // threshold bc blurring will make some pixels nonzero
-
-	// threshold(grey, grey, 30, 255, THRESH_BINARY);
-
-	if(verbose) {
-		imshow("grey", small_grey);
+		imshow("grey", color_mask);
 		waitKey(0);
 	}
 
 	vector<vector<Point>> contours;
-	// todo: try chain_approx_simple
-	// CHAIN_APPROX_NONE
-	findContours(small_grey, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	findContours(color_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+	// alt: CHAIN_APPROX_SIMPLE
 
 	if(contours.size() < 2) {  // piece and coin
 		cout << "ERROR: no puzzle piece found" << endl;
 		return;
 	}
 
+	Mat img_copy = img.clone();
 	if(verbose) {
 		cout << "display all contours" << endl;
-		img_copy = img.clone();
 		drawContours(img_copy, contours, -1, blue, 5);
 		imshow("grey", img_copy);
 		waitKey(0);
@@ -423,13 +433,17 @@ void PuzzlePiece::process(bool verbose) {
 	// scale everything up to regular size
 	// also include the scale factor
 	if(scalingLength == 0) {
-		scalingLength = coinRadius * resize_factor;
+		scalingLength = coinRadius;
 	}
-	double normalize_factor = scalingLength / (coinRadius * resize_factor);
+	double normalize_factor = scalingLength / coinRadius;
 	cout << "Piece " << number << " scaling by " << normalize_factor << endl;
 	for(Point &p: outline) {
-		p.x *= (resize_factor * normalize_factor);
-		p.y *= (resize_factor * normalize_factor);
+		p.x *= normalize_factor;
+		p.y *= normalize_factor;
+	}
+	for(Point &p: coin) {  // just for debug purposes
+		p.x *= normalize_factor;
+		p.y *= normalize_factor;
 	}
 	// resize the original image
 	// not sure if this will reallocate properly
@@ -839,7 +853,7 @@ int PuzzlePiece::downIndex() {
 }
 
 // search through edges to find a match
-pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], int numPieces) {
+pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose) {
 
 	bool firstScore = true;
 	double bestMatchScore; // find a better way to set it
@@ -850,7 +864,7 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 		if(pieces[i].isConnected) continue; // skip if already connected
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
-			double score = edges[edgeIndex].match(pieces[i].edges[j]);
+			double score = edges[edgeIndex].match(pieces[i].edges[j], verbose);
 			cout << "Piece " << number << " scores " << score << " against index " << j << " of piece " << i+1 << endl;
 			if(firstScore) {
 				bestMatchScore = score;
@@ -1084,7 +1098,7 @@ double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
 		}
 		if (minDistance > maxDistance) {
 			maxDistance = minDistance;
-			cout << "new biggest min distance: " << maxDistance << endl;
+			// cout << "new biggest min distance: " << maxDistance << endl;
 		}
 	}
 	return maxDistance;

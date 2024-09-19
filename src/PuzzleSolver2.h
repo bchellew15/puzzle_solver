@@ -15,7 +15,7 @@ public:
 
 	bool isEdge();
 	void rotate_edge(vector<Point> unrotated, double theta);
-	double match(EdgeOfPiece other);
+	double match(EdgeOfPiece other, bool verbose=false);
 };
 
 class PuzzlePiece {
@@ -55,7 +55,7 @@ public:
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
 	//if no match, returns NULL
-	pair<PuzzlePiece*, int> match(int edgeIndex, PuzzlePiece pieces[], int numPieces); //finds the matching piece
+	pair<PuzzlePiece*, int> match(int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose=false); //finds the matching piece
 
 	//constructors:
 	//PuzzlePiece();
