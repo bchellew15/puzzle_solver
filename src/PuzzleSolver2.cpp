@@ -41,7 +41,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	bool process_verbose = false;
+	bool process_verbose = true;
 	bool match_verbose = false;
 
 	int numPieces = 16;
@@ -344,10 +344,14 @@ void PuzzlePiece::process(bool verbose) {
 	cout << "b channel: " << b_channel_min << " to " << b_channel_max << endl;
 	cout << "g channel: " << g_channel_min << " to " << g_channel_max << endl;
 	cout << "r channel: " << r_channel_min << " to " << r_channel_max << endl;
+	double b_channel_width = b_channel_max - b_channel_min;
+	double g_channel_width = g_channel_max - g_channel_min;
+	double r_channel_width = r_channel_max - r_channel_min;
 
 	Mat color_mask;
-	Scalar colorLowerBound = Scalar(b_channel_min, g_channel_min, r_channel_min);
-	Scalar colorUpperBound = Scalar(b_channel_max, g_channel_max, r_channel_max);
+	int colorRangeBuffer = 10;  // fraction of color range that is added to each end
+	Scalar colorLowerBound = Scalar(max(0.0, b_channel_min - b_channel_width/colorRangeBuffer), max(0.0, g_channel_min - g_channel_width/colorRangeBuffer), max(0.0, r_channel_min - r_channel_width/colorRangeBuffer));
+	Scalar colorUpperBound = Scalar(min(255.0, b_channel_max + b_channel_width/colorRangeBuffer), min(255.0, g_channel_max + g_channel_width/colorRangeBuffer), min(255.0, r_channel_max + r_channel_width/colorRangeBuffer));
 	// Mat blurredImage;
 	// blur(img, blurredImage, Size(20, 20));
 	inRange(img, colorLowerBound, colorUpperBound, color_mask);
