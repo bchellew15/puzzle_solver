@@ -296,7 +296,7 @@ void PuzzlePiece::process(bool verbose) {
 
 	// magic numbers
 	int scanWidth = 50;
-	int scanDepth = 50;
+	int scanDepth = 20;
 
 	Scalar blue(255, 0, 0);
 	Scalar red(0, 0, 255);
@@ -336,7 +336,7 @@ void PuzzlePiece::process(bool verbose) {
 		waitKey(0);
 	}
 
-	Canny(small_grey, small_grey, 25, 50, 3);
+	Canny(small_grey, small_grey, 40, 80, 3);
 	if(verbose) {
 		cout << "detect edges" << endl;
 		imshow("grey", small_grey);
@@ -428,6 +428,19 @@ void PuzzlePiece::process(bool verbose) {
 		p.y *= 10;
 	}
 
+	/*
+	// smooth out the contour
+	approxPolyDP(outline, outline, 30, true);
+
+	// output outline to file
+	ofstream outlineFile("piece_outline.csv");
+	for(Point p: outline) {
+		outlineFile << p.x << "," << p.y << "\n";
+	}
+	outlineFile.close();
+	exit(0);
+	*/
+
 	// put contour into a vector bc drawContours() requires that
 	contours.clear();
 	contours.push_back(outline);
@@ -465,40 +478,152 @@ void PuzzlePiece::process(bool verbose) {
 
 	// I guess you can add Points. why?
 
-	// first top
-	while(pointPolygonTest(outline, core.tl() + Point(scanWidth, scanDepth), false) == -1
-			&& pointPolygonTest(outline, core.tl() + Point(core.width - scanWidth, scanDepth), false) == -1) {
-		core = Rect(core.tl().x, core.tl().y + scanDepth, core.width, core.height - scanDepth);
+	// todo: stopping conditions if things go wrong e.g.
+	// todo: too much copy / paste of code here
 
-		// maybe return false in this case?
-		if (core.tl().y > core.br().y) {
-			cout << "Failed to identify piece core." << endl;
-			return;
-		}
+	// scan from top
+	double top_buffer = 0;
+	vector<Point> scanLine;
+	for(int i = 0; i < core.width / scanWidth; i++) {
+		scanLine.push_back(core.tl() + Point(i * scanWidth, 0));
 	}
-	// right
-	while(pointPolygonTest(outline, core.tl() + Point(core.width - scanDepth, scanWidth), false) == -1
-			&& pointPolygonTest(outline, core.br() + Point(-scanDepth, -scanWidth), false) == -1) {
-		core = Rect(core.tl().x, core.tl().y, core.width - scanDepth, core.height);
+	bool scanEnd = false;
+	do {
+		double leftIndex = 0;
+		double rightIndex = scanLine.size() - 1;
+		for(; leftIndex < scanLine.size(); leftIndex++) {
+			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
+				break;
+			}
+		}
+		for(; rightIndex >= 0; rightIndex--) {
+			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
+				break;
+			}
+		}
 
-		// maybe return false in this case?
-		if (core.tl().x > core.br().x) {
-			cout << "Failed to identify piece core." << endl;
-			return;
+		// check if ratio is > 50%
+		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
+		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		if(occupiedRatio > 0.5) {
+			scanEnd = true;
+		} else {
+			for(Point &p: scanLine) {
+				p.y += scanDepth;
+			}
+			top_buffer += scanDepth;
 		}
-	}
-	// bottom
-	while(pointPolygonTest(outline, core.br() + Point(-scanWidth, -scanDepth), false) == -1
-			&& pointPolygonTest(outline, core.br() + Point(-core.width + scanWidth, -scanDepth), false) == -1) {
-		core = Rect(core.tl().x, core.tl().y, core.width, core.height - scanDepth);
+	} while(!scanEnd);
 
-		// maybe return false in this case?
-		if (core.br().y < core.tl().y) {
-			cout << "Failed to identify piece core." << endl;
-			return;
-		}
+	core = Rect(core.tl().x, core.tl().y + top_buffer, core.width, core.height - top_buffer);
+
+	// scan from bottom
+	double bottom_buffer = 0;
+	scanLine.clear();
+	for(int i = 0; i < core.width / scanWidth; i++) {
+		scanLine.push_back(core.tl() + Point(i * scanWidth, core.height));
 	}
-	// for these pieces in particular, don't need to check left.
+	scanEnd = false;
+	do {
+		double leftIndex = 0;
+		double rightIndex = scanLine.size() - 1;
+		for(; leftIndex < scanLine.size(); leftIndex++) {
+			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
+				break;
+			}
+		}
+		for(; rightIndex >= 0; rightIndex--) {
+			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
+				break;
+			}
+		}
+
+		// check if ratio is > 50%
+		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
+		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		if(occupiedRatio > 0.5) {
+			scanEnd = true;
+		} else {
+			for(Point &p: scanLine) {
+				p.y -= scanDepth;
+			}
+			bottom_buffer += scanDepth;
+		}
+	} while(!scanEnd);
+
+	core = Rect(core.tl().x, core.tl().y, core.width, core.height - bottom_buffer);
+
+	// scan from left
+	double left_buffer = 0;
+	scanLine.clear();
+	for(int i = 0; i < core.height / scanWidth; i++) {
+		scanLine.push_back(core.tl() + Point(0, i * scanWidth));
+	}
+	scanEnd = false;
+	do {
+		double leftIndex = 0;
+		double rightIndex = scanLine.size() - 1;
+		for(; leftIndex < scanLine.size(); leftIndex++) {
+			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
+				break;
+			}
+		}
+		for(; rightIndex >= 0; rightIndex--) {
+			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
+				break;
+			}
+		}
+
+		// check if ratio is > 50%
+		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
+		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		if(occupiedRatio > 0.5) {
+			scanEnd = true;
+		} else {
+			for(Point &p: scanLine) {
+				p.x += scanDepth;
+			}
+			left_buffer += scanDepth;
+		}
+	} while(!scanEnd);
+
+	core = Rect(core.tl().x + left_buffer, core.tl().y, core.width - left_buffer, core.height);
+
+	// scan from right
+	double right_buffer = 0;
+	scanLine.clear();
+	for(int i = 0; i < core.height / scanWidth; i++) {
+		scanLine.push_back(core.tl() + Point(core.width, i * scanWidth));
+	}
+	scanEnd = false;
+	do {
+		double leftIndex = 0;
+		double rightIndex = scanLine.size() - 1;
+		for(; leftIndex < scanLine.size(); leftIndex++) {
+			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
+				break;
+			}
+		}
+		for(; rightIndex >= 0; rightIndex--) {
+			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
+				break;
+			}
+		}
+
+		// check if ratio is > 50%
+		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
+		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		if(occupiedRatio > 0.5) {
+			scanEnd = true;
+		} else {
+			for(Point &p: scanLine) {
+				p.x -= scanDepth;
+			}
+			right_buffer += scanDepth;
+		}
+	} while(!scanEnd);
+
+	core = Rect(core.tl().x, core.tl().y, core.width - right_buffer, core.height);
 
 	if(verbose) {
 		// show core
