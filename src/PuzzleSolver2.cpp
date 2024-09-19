@@ -41,7 +41,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	bool process_verbose = true;
+	bool process_verbose = false;
 	bool match_verbose = false;
 
 	int numPieces = 16;
@@ -144,7 +144,7 @@ int main() {
 
 	PuzzlePiece *rowCursor = root;
 
-	while(rowCursor != nullptr && piecesMatched < numPieces) {
+	while(rowCursor != nullptr) {
 
 		// iterate down to the bottom
 		PuzzlePiece *columnCursor = rowCursor;
@@ -160,8 +160,13 @@ int main() {
 				// find a match
 				cout << "Looking for right match" << endl;
 				pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces, match_verbose);
+				if(matchPair.first == nullptr) {
+					columnCursor = nullptr;
+					break;
+				}
 				PuzzlePiece *matchingPiece = matchPair.first;
 				piecesMatched++;
+				cout << "pieces matched: " << piecesMatched << endl;
 				matchingPiece->isConnected = true;
 				columnCursor->rightNeighbor = matchingPiece;
 				matchingPiece->leftNeighbor = columnCursor; // not reallly necessary
@@ -170,6 +175,8 @@ int main() {
 				columnCursor = matchingPiece;
 			}
 		}
+
+		if(piecesMatched >= numPieces) break;  // loop above could increment piecesMatched
 
 		cout << "Row cursor: piece " << rowCursor->number << endl;
 
@@ -180,8 +187,13 @@ int main() {
 			// find a match
 			cout << "Looking for down match" << endl;
 			pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces, match_verbose);
+			if(matchPair.first == nullptr) {
+				rowCursor = nullptr;
+				break;
+			}
 			PuzzlePiece *matchingPiece = matchPair.first;
 			piecesMatched++;
+			cout << "pieces matched: " << piecesMatched << endl;
 			matchingPiece->isConnected = true;
 			rowCursor->downNeighbor = matchingPiece;
 			matchingPiece->upNeighbor = rowCursor; // not reallly necessary
@@ -859,7 +871,7 @@ int PuzzlePiece::downIndex() {
 // search through edges to find a match
 pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose) {
 
-	bool firstScore = true;
+	bool firstMatch = true;
 	double bestMatchScore; // find a better way to set it
 	int bestMatchPieceIdx;
 	int bestMatchEdgeIdx;
@@ -870,11 +882,11 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
 			double score = edges[edgeIndex].match(pieces[i].edges[j], verbose);
 			cout << "Piece " << number << " scores " << score << " against index " << j << " of piece " << i+1 << endl;
-			if(firstScore) {
+			if(firstMatch) {
 				bestMatchScore = score;
 				bestMatchPieceIdx = i;
 				bestMatchEdgeIdx = j;
-				firstScore = false;
+				firstMatch = false;
 			}
 			else if(score < bestMatchScore) { // low score is best
 				bestMatchScore = score;
@@ -884,8 +896,12 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 		}
 	}
 
-	cout << "Piece " << number << " matches edge " << bestMatchEdgeIdx << " of piece " << bestMatchPieceIdx+1 << endl;
+	if(firstMatch) {
+		cout << "ERROR: remaining pieces are edges only." << endl;
+		return make_pair(nullptr, -1);
+	}
 
+	cout << "Piece " << number << " matches edge " << bestMatchEdgeIdx << " of piece " << bestMatchPieceIdx+1 << endl;
 	return make_pair(&pieces[bestMatchPieceIdx], bestMatchEdgeIdx);
 }
 
