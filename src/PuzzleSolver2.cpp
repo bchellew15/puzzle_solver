@@ -166,6 +166,34 @@ int main() {
 
 	pieces[1].rightIndex = 3;
 	pieces[1].upNeighbor = &pieces[0];
+	pieces[1].rightNeighbor = &pieces[11];
+	pieces[1].downNeighbor = &pieces[8];
+
+	pieces[11].rightIndex = 2;
+	pieces[11].leftNeighbor = &pieces[1];
+	pieces[11].rightNeighbor = &pieces[15];
+
+	pieces[15].rightIndex = 1;
+	pieces[15].leftNeighbor = &pieces[11];
+	pieces[15].rightNeighbor = &pieces[12];
+
+	pieces[12].rightIndex = 3;
+	pieces[12].leftNeighbor = &pieces[15];
+
+	pieces[8].rightIndex = 1;
+	pieces[8].upNeighbor = &pieces[1];
+	pieces[8].rightNeighbor = &pieces[9];
+
+	pieces[9].rightIndex = 3;
+	pieces[9].leftNeighbor = &pieces[8];
+	pieces[9].rightNeighbor = &pieces[2];
+
+	pieces[2].rightIndex = 2;
+	pieces[2].leftNeighbor = &pieces[9];
+	pieces[2].rightNeighbor = &pieces[10];
+
+	pieces[10].rightIndex = 0;
+	pieces[10].leftNeighbor = &pieces[2];
 
 	displayPuzzle(root2, true);
 	exit(0);
@@ -775,12 +803,16 @@ void PuzzlePiece::process(bool verbose) {
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
-	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
-		Moments m = moments(edges[i].edge);
-		int cx = int(m.m10/m.m00);
-		int cy = int(m.m01/m.m00);
-		edges[i].centroid = Point(cx, cy);
-	}
+//	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
+//		Moments m = moments(edges[i].edge);
+//		int cx = int(m.m10/m.m00);
+//		int cy = int(m.m01/m.m00);
+//		edges[i].centroid = Point(cx, cy);
+//	}
+	edges[0].centroid = Point(core.tl().x + core.width/2, core.tl().y);  // Point data type?
+	edges[1].centroid = Point(core.br().x, core.tl().y + core.height/2);
+	edges[2].centroid = Point(core.tl().x + core.width/2, core.br().y);
+	edges[3].centroid = Point(core.tl().x, core.tl().y + core.height/2);
 
 	// todo: verify that these edges are reasonable e.g. have more than a couple points
 
