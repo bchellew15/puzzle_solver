@@ -63,8 +63,8 @@ int main() {
 	destroyWindow("temp");
 
 	// test: process one piece
-	// PuzzlePiece p = PuzzlePiece(images[8], 8, process_verbose);
-	// exit(0);
+	// PuzzlePiece p1 = PuzzlePiece(images[5], 5, true);
+	// PuzzlePiece p2 = PuzzlePiece(images[14], 5, true);
 
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
@@ -89,21 +89,19 @@ int main() {
 	}
 	*/
 
+	/*
 	// test a specific edge
 	int testIndex = 6;
 	pieces[testIndex-1].isConnected=true;
 	pieces[testIndex-1].rightIndex = 0;
 	// pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
 	// close matches:
-	pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
-	pieces[testIndex-1].edges[0].match(pieces[15].edges[0], true); // correct match, score 214!
-	// and look at the closest matches:
-//	pieces[testIndex-1].edges[1].match(pieces[5].edges[2], true); // correct match, score 59
-//	pieces[testIndex-1].edges[1].match(pieces[2].edges[0], true); // score 65
-//	pieces[testIndex-1].edges[1].match(pieces[6].edges[1], true); // score 49
-//	pieces[testIndex-1].edges[1].match(pieces[11].edges[0], true);  // score 46
-//	pieces[testIndex-1].edges[1].match(pieces[11].edges[2], true);  // score 48
+	double score1 = pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
+	cout << "score1: " << score1 << endl;
+	double score2 = pieces[testIndex-1].edges[0].match(pieces[14].edges[3], true); // correct match, score ???
+	cout << "score2: " << score2 << endl;
 	exit(0);
+	*/
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -849,7 +847,7 @@ void PuzzlePiece::process(bool verbose) {
 		}
 	}
 
-	// right edge: rotate by flipping across y = -x, then across y = 0 (origin is upper right)
+	// right edge: rotate by flipping across y = -x, then across y = 0 (origin is upper left)
 	if(!edges[1].isEdgeVar) {
 		for(Point &p: edges[1].edge) {
 			double temp = p.y;
@@ -864,7 +862,7 @@ void PuzzlePiece::process(bool verbose) {
 			p.x = -p.x;
 		}
 	}
-	// left edge: rotate by flipping across y = x then across y = 0 (origin is upper right)
+	// left edge: rotate by flipping across y = x then across y = 0 (origin is upper left)
 	if(!edges[3].isEdgeVar) {
 		for(Point &p: edges[3].edge) {
 			double temp = p.y;
@@ -1183,6 +1181,8 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 // should reverse the loop also to be more like hausdorff
 double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
 
+	double edgeBuffer = 100;  // in case one of the edges includes a corner + part of another edge
+
 	// ignore points past the edge
 	double minX1 = edge1[0].x;
 	double maxX1 = edge1[0].x;
@@ -1196,8 +1196,8 @@ double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
 		if (p2.x < minX2) minX2 = p2.x;
 		if (p2.x > maxX2) maxX2 = p2.x;
 	}
-	double minX = max(minX1, minX2);
-	double maxX = min(maxX1, maxX2);
+	double minX = max(minX1, minX2) + edgeBuffer;
+	double maxX = min(maxX1, maxX2) - edgeBuffer;
 
 	// loop to find max distance
 	double maxDistance = 0;
