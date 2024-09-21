@@ -62,6 +62,10 @@ int main() {
 	waitKey(0);
 	destroyWindow("temp");
 
+	// test: process one piece
+	// PuzzlePiece p = PuzzlePiece(images[8], 8, process_verbose);
+	// exit(0);
+
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
@@ -85,19 +89,21 @@ int main() {
 	}
 	*/
 
-	/*
 	// test a specific edge
-	int testIndex = 14;
+	int testIndex = 6;
 	pieces[testIndex-1].isConnected=true;
-	pieces[testIndex-1].rightIndex = 1;
-	pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
+	pieces[testIndex-1].rightIndex = 0;
+	// pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
+	// close matches:
+	pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
+	pieces[testIndex-1].edges[0].match(pieces[15].edges[0], true); // correct match, score 214!
 	// and look at the closest matches:
-	pieces[testIndex-1].edges[1].match(pieces[5].edges[2], true); // correct match, score 59
-	pieces[testIndex-1].edges[1].match(pieces[2].edges[0], true); // score 65
-	pieces[testIndex-1].edges[1].match(pieces[6].edges[1], true); // score 49
-	pieces[testIndex-1].edges[1].match(pieces[11].edges[0], true);  // score 46
-	pieces[testIndex-1].edges[1].match(pieces[11].edges[2], true);  // score 48
-	*/
+//	pieces[testIndex-1].edges[1].match(pieces[5].edges[2], true); // correct match, score 59
+//	pieces[testIndex-1].edges[1].match(pieces[2].edges[0], true); // score 65
+//	pieces[testIndex-1].edges[1].match(pieces[6].edges[1], true); // score 49
+//	pieces[testIndex-1].edges[1].match(pieces[11].edges[0], true);  // score 46
+//	pieces[testIndex-1].edges[1].match(pieces[11].edges[2], true);  // score 48
+	exit(0);
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -131,72 +137,58 @@ int main() {
 
 	cout << "First corner at index " << firstCornerIdx << endl;
 
+	/*
 	// test: create a fake puzzle for display
 	PuzzlePiece *root2 = &pieces[firstCornerIdx];
 	root2->rightIndex = 1;
 	root2->rightNeighbor = &pieces[4];
 	root2->downNeighbor = &pieces[0];
-
 	pieces[4].rightIndex = 0;
 	pieces[4].rightNeighbor = &pieces[6];
 	pieces[4].leftNeighbor = &pieces[firstCornerIdx];
-
 	pieces[6].rightIndex = 0;
 	pieces[6].rightNeighbor = &pieces[7];
 	pieces[6].leftNeighbor = &pieces[4];
-
 	pieces[7].rightIndex = 0;
 	pieces[7].leftNeighbor = &pieces[6];
-
 	pieces[0].rightIndex = 3;
 	pieces[0].rightNeighbor = &pieces[13];
 	pieces[0].downNeighbor = &pieces[1];
 	pieces[0].upNeighbor = &pieces[firstCornerIdx];
-
 	pieces[13].rightIndex = 1;
 	pieces[13].rightNeighbor = &pieces[5];
 	pieces[13].leftNeighbor = &pieces[0];
-
 	pieces[5].rightIndex = 0;
 	pieces[5].rightNeighbor = &pieces[14];
 	pieces[5].leftNeighbor = &pieces[13];
-
 	pieces[14].rightIndex = 1;
 	pieces[14].leftNeighbor = &pieces[5];
-
 	pieces[1].rightIndex = 3;
 	pieces[1].upNeighbor = &pieces[0];
 	pieces[1].rightNeighbor = &pieces[11];
 	pieces[1].downNeighbor = &pieces[8];
-
 	pieces[11].rightIndex = 2;
 	pieces[11].leftNeighbor = &pieces[1];
 	pieces[11].rightNeighbor = &pieces[15];
-
 	pieces[15].rightIndex = 1;
 	pieces[15].leftNeighbor = &pieces[11];
 	pieces[15].rightNeighbor = &pieces[12];
-
 	pieces[12].rightIndex = 3;
 	pieces[12].leftNeighbor = &pieces[15];
-
 	pieces[8].rightIndex = 1;
 	pieces[8].upNeighbor = &pieces[1];
 	pieces[8].rightNeighbor = &pieces[9];
-
 	pieces[9].rightIndex = 3;
 	pieces[9].leftNeighbor = &pieces[8];
 	pieces[9].rightNeighbor = &pieces[2];
-
 	pieces[2].rightIndex = 2;
 	pieces[2].leftNeighbor = &pieces[9];
 	pieces[2].rightNeighbor = &pieces[10];
-
 	pieces[10].rightIndex = 0;
 	pieces[10].leftNeighbor = &pieces[2];
-
 	displayPuzzle(root2, true);
 	exit(0);
+	*/
 
 	PuzzlePiece *root = &pieces[firstCornerIdx];
 	root->isConnected = true;
@@ -426,9 +418,15 @@ void PuzzlePiece::process(bool verbose) {
 	double s_channel_width = s_channel_max - s_channel_min;
 	double v_channel_width = v_channel_max - v_channel_min;
 
-	int colorRangeBuffer = 3;  // fraction of color range that is added to each end
-	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/colorRangeBuffer), max(0.0, s_channel_min - s_channel_width/colorRangeBuffer), max(0.0, v_channel_min - v_channel_width/colorRangeBuffer));
-	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/colorRangeBuffer), min(255.0, s_channel_max + s_channel_width/colorRangeBuffer), min(255.0, v_channel_max + v_channel_width/colorRangeBuffer));
+	double hueBuffer = 0.5;  // fraction of color range that is added to each end
+	double satBuffer = 1.5;
+	double valueBuffer = 1.5;
+	// Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/colorRangeBuffer), max(0.0, s_channel_min - s_channel_width/colorRangeBuffer), max(0.0, v_channel_min - v_channel_width/colorRangeBuffer));
+	// Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/colorRangeBuffer), min(255.0, s_channel_max + s_channel_width/colorRangeBuffer), min(255.0, v_channel_max + v_channel_width/colorRangeBuffer));
+	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/hueBuffer), max(0.0, s_channel_min - s_channel_width/satBuffer), max(0.0, v_channel_min - v_channel_width/valueBuffer));
+	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/hueBuffer), min(255.0, s_channel_max + s_channel_width/satBuffer), min(255.0, v_channel_max + v_channel_width/valueBuffer));
+	cout << "value range: " << colorLowerBound << " " << colorUpperBound << endl;
+
 	// Mat blurredImage;
 	// blur(img, blurredImage, Size(20, 20));
 	// cout << "color bounds: " << colorLowerBound << " " << colorUpperBound << endl;
