@@ -22,14 +22,10 @@ public:
 class PuzzlePiece {
 public:
 	PuzzlePiece();
-	PuzzlePiece(Mat m, int i, bool verbose=true);
+	PuzzlePiece(Mat m, int i);
 
 	Mat img;
 	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
-	PuzzlePiece *leftNeighbor = nullptr;
-	PuzzlePiece *rightNeighbor = nullptr;
-	PuzzlePiece *upNeighbor = nullptr;
-	PuzzlePiece *downNeighbor = nullptr;
 	vector<Point> outline;
 	Rect core;
 	int number; //the number of the piece
@@ -62,7 +58,24 @@ public:
 	//PuzzlePiece();
 };
 
-void displayPuzzle(PuzzlePiece *root, bool verbose=false, bool checkRotation=true);
+class Puzzle {
+public:
+
+	Puzzle(int _numPieces, PuzzlePiece _pieces[]);
+
+	PuzzlePiece *pieces;
+	int numPieces;
+	vector<vector<PuzzlePiece*>> completedPuzzle;
+	int rows;
+	int columns;
+	vector<double> rowHs;
+	vector<double> colWs;
+
+	void process(bool verbose=false);
+	void assemble(bool verbose=false);
+	void print();
+	void display(bool verbose=false, bool checkRotation=true);
+};
 
 double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2);
 

@@ -69,71 +69,8 @@ int main() {
 	// todo: if the piece construction fails, stop the program
 	PuzzlePiece pieces[numPieces];
 	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i, process_verbose); // last argument is "verbose"
+		pieces[i] = PuzzlePiece(images[i], i); // last argument is "verbose"
 	}
-
-	cout << "checkpoint" << endl;
-
-	// test: compare all edges to each other
-	/*
-	for(int i = 0; i < numPieces-1; i++) {
-		for(int j = i+1; j < numPieces; j++) {
-			for(int k = 0; k < 4; k++) {
-				for(int l = 0; l < 4; l++) {
-					if(pieces[i].edges[k].isEdgeVar || pieces[j].edges[l].isEdgeVar) continue;
-					cout << pieces[i].edges[k].match(pieces[j].edges[l]);
-					cout << " pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
-				}
-			}
-		}
-	}
-	*/
-
-	/*
-	// test a specific edge
-	int testIndex = 6;
-	pieces[testIndex-1].isConnected=true;
-	pieces[testIndex-1].rightIndex = 0;
-	// pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
-	// close matches:
-	double score1 = pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
-	cout << "score1: " << score1 << endl;
-	double score2 = pieces[testIndex-1].edges[0].match(pieces[14].edges[3], true); // correct match, score ???
-	cout << "score2: " << score2 << endl;
-	exit(0);
-	*/
-
-	// edge test results:
-	// avg dist between 2 and 4 pixels for edges.
-	// avg dist > 100 for non-edges
-
-	// test edge detection and counting
-	/*
-	for(int i = 0; i < numPieces; i++) {
-		cout << "Piece " << i << endl;
-		for(int j = 0; j < 4; j++) {
-			cout << "Edge " << j+1 << ": " << pieces[i].edges[j].isEdgeVar << endl;
-		}
-		cout << "Number of edges: " << pieces[i].countEdges() << endl;
-		cout << "Is corner? " << pieces[i].isCorner() << endl;
-	}
-	*/
-
-	cout<<"Loaded!" << endl;
-
-	// todo: make this an "assemble" function
-
-	// find a corner
-	int firstCornerIdx = 0;
-	while(firstCornerIdx < numPieces && !(pieces[firstCornerIdx]).isCorner()) {
-		firstCornerIdx++;
-	}
-	if(firstCornerIdx >= numPieces) {
-		cout << "ERROR: no corners found" << endl;
-		return 0;
-	}
-
-	cout << "First corner at index " << firstCornerIdx << endl;
 
 	/*
 	// test: create a fake puzzle for display
@@ -188,97 +125,60 @@ int main() {
 	exit(0);
 	*/
 
-	PuzzlePiece *root = &pieces[firstCornerIdx];
-	root->isConnected = true;
-	// todo: check if pieces matched reaches numPieces
-	int piecesMatched = 1;
-	// set the orientation of the root piece
-	root->rightIndex = root->orientRoot();
-
-	cout << "Start matching" << endl;
-
-	// wonder if there is a cleaner way to write these loops e.g. w less duplication
-
-	PuzzlePiece *rowCursor = root;
-
-	while(rowCursor != nullptr) {
-
-		// iterate down to the bottom
-		PuzzlePiece *columnCursor = rowCursor;
-		while(columnCursor != nullptr && piecesMatched < numPieces) {
-
-			cout << "Column cursor: piece " << columnCursor->number << endl;
-
-			// find matching piece to the right and shift to the right
-			if(columnCursor->edges[columnCursor->rightIndex].isEdgeVar) {
-				columnCursor = nullptr;
-				cout << "Right edge piece found" << endl;
-			} else {
-				// find a match
-				cout << "Looking for right match" << endl;
-				pair<PuzzlePiece*, int> matchPair = columnCursor->match(columnCursor->rightIndex, pieces, numPieces, match_verbose);
-				if(matchPair.first == nullptr) {
-					columnCursor = nullptr;
-					break;
+	// test: compare all edges to each other
+	/*
+	for(int i = 0; i < numPieces-1; i++) {
+		for(int j = i+1; j < numPieces; j++) {
+			for(int k = 0; k < 4; k++) {
+				for(int l = 0; l < 4; l++) {
+					if(pieces[i].edges[k].isEdgeVar || pieces[j].edges[l].isEdgeVar) continue;
+					cout << pieces[i].edges[k].match(pieces[j].edges[l]);
+					cout << " pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
 				}
-				PuzzlePiece *matchingPiece = matchPair.first;
-				piecesMatched++;
-				cout << "pieces matched: " << piecesMatched << endl;
-				matchingPiece->isConnected = true;
-				columnCursor->rightNeighbor = matchingPiece;
-				matchingPiece->leftNeighbor = columnCursor; // not really necessary
-				matchingPiece->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
-
-				columnCursor = matchingPiece;
 			}
 		}
-
-		if(piecesMatched >= numPieces) break;  // loop above could increment piecesMatched
-
-		cout << "Row cursor: piece " << rowCursor->number << endl;
-
-		if(rowCursor->edges[rowCursor->downIndex()].isEdgeVar) {
-			rowCursor = nullptr;
-			cout << "Bottom edge piece found" << endl;
-		} else {
-			// find a match
-			cout << "Looking for down match" << endl;
-			pair<PuzzlePiece*, int> matchPair = rowCursor->match(rowCursor->downIndex(), pieces, numPieces, match_verbose);
-			if(matchPair.first == nullptr) {
-				rowCursor = nullptr;
-				break;
-			}
-			PuzzlePiece *matchingPiece = matchPair.first;
-			piecesMatched++;
-			cout << "pieces matched: " << piecesMatched << endl;
-			matchingPiece->isConnected = true;
-			rowCursor->downNeighbor = matchingPiece;
-			matchingPiece->upNeighbor = rowCursor; // not reallly necessary
-			matchingPiece->rightIndex = PuzzlePiece::nextIndex(matchPair.second);
-
-			rowCursor = matchingPiece;
-		}
 	}
+	*/
 
-	cout << "Puzzle completed!" << endl;
+	/*
+	// test a specific edge
+	int testIndex = 6;
+	pieces[testIndex-1].isConnected=true;
+	pieces[testIndex-1].rightIndex = 0;
+	// pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
+	// close matches:
+	double score1 = pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
+	cout << "score1: " << score1 << endl;
+	double score2 = pieces[testIndex-1].edges[0].match(pieces[14].edges[3], true); // correct match, score ???
+	cout << "score2: " << score2 << endl;
+	exit(0);
+	*/
 
-	// todo: better evaluation of whether the puzzle is actually completed
+	// edge test results:
+	// avg dist between 2 and 4 pixels for edges.
+	// avg dist > 100 for non-edges
 
-	//print:
-	// (doesn't work properly bc the main loop goes top to bottom first)
-	rowCursor = root;
-	while(rowCursor != nullptr) {
-		PuzzlePiece *columnCursor = rowCursor;
-		while(columnCursor != nullptr) {
-			columnCursor->print();
-			columnCursor = columnCursor->rightNeighbor;
+	// test edge detection and counting
+	/*
+	for(int i = 0; i < numPieces; i++) {
+		cout << "Piece " << i << endl;
+		for(int j = 0; j < 4; j++) {
+			cout << "Edge " << j+1 << ": " << pieces[i].edges[j].isEdgeVar << endl;
 		}
-		cout << endl;
-		rowCursor = rowCursor->downNeighbor;
+		cout << "Number of edges: " << pieces[i].countEdges() << endl;
+		cout << "Is corner? " << pieces[i].isCorner() << endl;
 	}
+	*/
 
-	// display completed puzzle:
-	displayPuzzle(root, true);
+	// create a Puzzle
+	Puzzle myPuzzle = Puzzle(numPieces, pieces);
+	myPuzzle.process(process_verbose);
+	myPuzzle.assemble(match_verbose);
+
+	cout<<"Loaded!" << endl;
+
+	myPuzzle.print();
+	myPuzzle.display(true);
 
 	return 0;
 }
@@ -361,10 +261,9 @@ PuzzlePiece::PuzzlePiece() {
 	// empty
 }
 
-PuzzlePiece::PuzzlePiece(Mat m, int i, bool verbose) {
+PuzzlePiece::PuzzlePiece(Mat m, int i) {
 	img = m;
 	number = i+1;
-	process(verbose);
 }
 
 // todo: break this into steps. first get the piece border, then split into chunks
@@ -416,6 +315,8 @@ void PuzzlePiece::process(bool verbose) {
 	double s_channel_width = s_channel_max - s_channel_min;
 	double v_channel_width = v_channel_max - v_channel_min;
 
+	// for light green background: (0.5, 1.5, 1.5)
+	// for white background: (1, 5, 5) is ok not great
 	double hueBuffer = 0.5;  // fraction of color range that is added to each end
 	double satBuffer = 1.5;
 	double valueBuffer = 1.5;
@@ -1013,60 +914,153 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 	}
 }
 
-void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
+Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
+	numPieces = _numPieces;
+	pieces = _pieces;
+}
+
+void Puzzle::process(bool verbose) {
+	for(int i = 0; i < numPieces; i++) {
+		pieces[i].process(verbose);
+	}
+}
+
+void Puzzle::assemble(bool verbose) {
+
+	// find a corner
+	int firstCornerIdx = 0;
+	while(firstCornerIdx < numPieces && !(pieces[firstCornerIdx]).isCorner()) {
+		firstCornerIdx++;
+	}
+	if(firstCornerIdx >= numPieces) {
+		cout << "ERROR: no corners found" << endl;
+		return;
+	}
+	cout << "First corner at index " << firstCornerIdx << endl;
+
+	completedPuzzle.push_back(vector<PuzzlePiece*>());
+	completedPuzzle[0].push_back(&pieces[firstCornerIdx]);
+	pieces[firstCornerIdx].isConnected = true;
+	completedPuzzle[0][0]->rightIndex = completedPuzzle[0][0]->orientRoot();  // set orientation of top left corner
+	cout << "Root is piece " << completedPuzzle[0][0]->number << endl;
+
+	cout << "Start matching." << endl;
+
+	// construct top edge
+	cout << "Constructing top edge." << endl;
+	PuzzlePiece *cursor = completedPuzzle[0][0];
+	while(!cursor->edges[cursor->rightIndex].isEdgeVar && completedPuzzle[0].size() < numPieces) {
+		pair<PuzzlePiece*, int> matchPair = cursor->match(cursor->rightIndex, pieces, numPieces, verbose);
+		if(matchPair.first == nullptr) {
+			cout << "ERROR: no valid matches found" << endl;
+			return;
+		}
+
+		cursor = matchPair.first;
+		completedPuzzle[0].push_back(cursor);
+		cout << "Match: piece " << cursor->number << endl;
+		cursor->isConnected = true;
+		cursor->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
+	}
+	columns = completedPuzzle[0].size();
+	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
+
+	// calculate number of rows
+	if(numPieces % columns != 0) {
+		cout << "ERROR: " << columns << " columns found. Invalid for puzzle with " << numPieces << " pieces." << endl;
+	} else {
+		rows = numPieces / columns; // check division rules
+		cout << rows << "rows" << endl;
+	}
+
+	// construct left edge
+	cout << "Constructing left edge." << endl;
+	cursor = completedPuzzle[0][0];  // reset cursor
+	for(int i = 1; i < rows; i++) {
+		if(cursor->edges[cursor->downIndex()].isEdgeVar) {
+			cout << "ERROR: unexpected edge encountered" << endl;
+			return;
+		}
+
+		pair<PuzzlePiece*, int> matchPair = cursor->match(cursor->downIndex(), pieces, numPieces, verbose);
+		if(matchPair.first == nullptr) {
+			cout << "ERROR: no valid matches found" << endl;
+			return;
+		}
+
+		cursor = matchPair.first;
+		completedPuzzle.push_back(vector<PuzzlePiece*>());
+		completedPuzzle[i].push_back(cursor);  // combine w previous line?
+		cout << "Match: piece " << cursor->number << endl;
+		cursor->isConnected = true;
+		cursor->rightIndex = PuzzlePiece::nextIndex(matchPair.second);
+	}
+
+	// fill in the rest:
+	for(int i = 1; i < rows; i++) {
+		for(int j = 1; j < columns; j++) {
+			PuzzlePiece *cursor = completedPuzzle[i][j-1];
+			pair<PuzzlePiece*, int> matchPair = cursor->match(cursor->rightIndex, pieces, numPieces, verbose);
+			cursor=matchPair.first;
+			completedPuzzle[i].push_back(cursor);
+			cursor->isConnected = true;
+			cursor->rightIndex = PuzzlePiece::oppIndex(matchPair.second);
+		}
+	}
+	// todo: check for edges in the middle of the puzzle
+	// todo: choose matches based on pieces above AND left
+
+	cout << "Puzzle completed!" << endl;
+
+	// todo: better evaluation of whether the puzzle is actually completed
+}
+
+// print piece numbers in solved configuration
+void Puzzle::print() {
+	for(int i = 0; i < rows; i++) {
+		for(int j = 0; j < columns; j++) {
+			completedPuzzle[i][j]->print();
+		}
+		cout << endl;
+	}
+}
+
+void Puzzle::display(bool verbose, bool checkRotation) {
 
 	namedWindow("temp");
 
 	// traverse the puzzle to figure out the size needed.
-	double width = root->width();
-	double height = root->height();
-	cout << "width: " << width << endl;
-	cout << "height: " << height << endl;
-	int numPiecesX = 0;
-	int numPiecesY = 0;
-	PuzzlePiece *cursor = root;
-	while(cursor != nullptr) {
-		numPiecesY++;
-		cursor = cursor->downNeighbor;
-	}
-	cursor = root;
-	while(cursor != nullptr) {
-		numPiecesX++;
-		cursor = cursor->rightNeighbor;
-	}
-	cout << "num pieces: " << numPiecesX << " by " << numPiecesY << endl;
-	double edgeLength = max(numPiecesX * width, numPiecesY * height); // leave room for rotating at the end
-	Mat completedPuzzle = Mat::zeros(edgeLength, edgeLength, root->img.type());
-	cout << "completed puzzle size: " << completedPuzzle.size() << endl;
+	double width = completedPuzzle[0][0]->width();
+	double height = completedPuzzle[0][0]->height();
+	double edgeLength = max(columns * width, rows * height); // leave room for rotating at the end
+	Mat completedPuzzleImg = Mat::zeros(edgeLength, edgeLength, completedPuzzle[0][0]->img.type());
+	cout << "completed puzzle size: " << completedPuzzleImg.size() << endl;
 
 	// loop through the pieces and copy to completed image
-	int row = 0;
-	int col = 0;
-	PuzzlePiece *rowCursor = root;
-	while(rowCursor != nullptr) {
-		PuzzlePiece *columnCursor = rowCursor;
-		col = 0;
-		while(columnCursor != nullptr) {
+	for(int col = 0; col < columns; col++) {
+		for(int row = 0; row < rows; row++) {
 
-			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
+ 			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
 			// use the new top-left corner in the calculations instead.
 
 			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
 
+			PuzzlePiece *cursor = completedPuzzle[row][col];
+
 			// transformations: rotate and shift the puzzle piece
-			Mat img_copy = columnCursor->img.clone();
-			Mat transformed = Mat::zeros(completedPuzzle.size(), completedPuzzle.type());
+			Mat img_copy = cursor->img.clone();
+			Mat transformed = Mat::zeros(completedPuzzleImg.size(), completedPuzzleImg.type());
 			if(verbose) {
 				cout << "show image" << endl;
-				imshow("temp", columnCursor->img);
+				imshow("temp", cursor->img);
 				waitKey(0);
 			}
-			cout << "top left coordinate: " << columnCursor->core.tl() << endl;
-			cout << "x shift: " << col * width - columnCursor->core.tl().x << endl;
-			cout << "y shift: " << row * height - columnCursor->core.tl().y << endl;
+			cout << "top left coordinate: " << cursor->core.tl() << endl;
+			cout << "x shift: " << col * width - cursor->core.tl().x << endl;
+			cout << "y shift: " << row * height - cursor->core.tl().y << endl;
 			// rotate about the center of the piece
-			Point rotationCenter = Point(columnCursor->core.tl().x + columnCursor->core.width/2, columnCursor->core.tl().y + columnCursor->core.height/2);
-			Mat t1 = getRotationMatrix2D(rotationCenter, columnCursor->rotationAngle(), 1);
+			Point rotationCenter = Point(cursor->core.tl().x + cursor->core.width/2, cursor->core.tl().y + cursor->core.height/2);
+			Mat t1 = getRotationMatrix2D(rotationCenter, cursor->rotationAngle(), 1);
 			cout << "rotation matrix: " << t1 << endl;
 			warpAffine(img_copy, img_copy, t1, img_copy.size());
 			if(verbose) {
@@ -1076,10 +1070,10 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			}
 			// rotate the centroids of the current piece
 			for(int i = 0; i < 4; i++) {
-				double cx = columnCursor->edges[i].centroid.x;
-				double cy = columnCursor->edges[i].centroid.y;
-				columnCursor->edges[i].centroid.x = t1.at<double>(0, 0) * cx + t1.at<double>(0, 1) * cy + t1.at<double>(0, 2);
-				columnCursor->edges[i].centroid.y = t1.at<double>(1, 0) * cx + t1.at<double>(1, 1) * cy + t1.at<double>(1, 2);
+				double cx = cursor->edges[i].centroid.x;
+				double cy = cursor->edges[i].centroid.y;
+				cursor->edges[i].centroid.x = t1.at<double>(0, 0) * cx + t1.at<double>(0, 1) * cy + t1.at<double>(0, 2);
+				cursor->edges[i].centroid.y = t1.at<double>(1, 0) * cx + t1.at<double>(1, 1) * cy + t1.at<double>(1, 2);
 			}
 
 			// now translate
@@ -1087,24 +1081,26 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			// note: could do this check implicitly by waiting until this while loop exits to the other one
 			Point2f shift; // about converting int to double if I just do Point
 
-			if(columnCursor->leftNeighbor == nullptr && columnCursor->upNeighbor == nullptr) {  // this is top left corner
-				if(columnCursor->rotationAngle() == 90 || columnCursor->rotationAngle() == 270) {
+			if(row == 0 && col == 0) {  // top left corner
+				if(cursor->rotationAngle() == 90 || cursor->rotationAngle() == 270) {
 					cout << "shifting TL corner bc of rotation" << endl;
-					Point rotated_tl = columnCursor->core.tl()
-							+ Point(columnCursor->core.width/2 - columnCursor->core.height/2,
-									columnCursor->core.height/2 - columnCursor->core.width/2);
+					Point rotated_tl = cursor->core.tl()
+							+ Point(cursor->core.width/2 - cursor->core.height/2,
+									cursor->core.height/2 - cursor->core.width/2);
 					// cout << "new TL corner: " << rotated_tl << endl;
 					shift = -rotated_tl;
 				} else {
-					shift = -columnCursor->core.tl();
+					shift = -cursor->core.tl();
 				}
-			} else if(columnCursor->leftNeighbor == nullptr) {  // this is left edge
-				Point prevCentroid = columnCursor->upNeighbor->edges[columnCursor->upNeighbor->downIndex()].centroid;
-				Point currentCentroid = columnCursor->edges[PuzzlePiece::oppIndex(columnCursor->downIndex())].centroid;
+			} else if(col == 0) {  // left edge
+				PuzzlePiece *upNeighbor = completedPuzzle[row-1][col];
+				Point prevCentroid = upNeighbor->edges[upNeighbor->downIndex()].centroid;
+				Point currentCentroid = cursor->edges[PuzzlePiece::oppIndex(cursor->downIndex())].centroid;
 				shift = prevCentroid - currentCentroid;
 			} else {  // most pieces
-				Point prevCentroid = columnCursor->leftNeighbor->edges[columnCursor->leftNeighbor->rightIndex].centroid;
-				Point currentCentroid = columnCursor->edges[PuzzlePiece::oppIndex(columnCursor->rightIndex)].centroid;
+				PuzzlePiece *leftNeighbor = completedPuzzle[row][col-1];
+				Point prevCentroid = leftNeighbor->edges[leftNeighbor->rightIndex].centroid;
+				Point currentCentroid = cursor->edges[PuzzlePiece::oppIndex(cursor->rightIndex)].centroid;
 				shift = prevCentroid - currentCentroid;
 			}
 
@@ -1120,7 +1116,7 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			}
 
 			// also need to shift AND rotate the outline
-			vector<Point> shifted_outline = columnCursor->outline;  // verify how this assignment works
+			vector<Point> shifted_outline = cursor->outline;  // verify how this assignment works
 			// shifted_outline += Point(col * width - columnCursor->core.tl().x, row * height - columnCursor->core.tl().y);
 			for(Point &p: shifted_outline) {
 				double temp_x = p.x;
@@ -1129,8 +1125,8 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 			}
 			// and shift the centroids
 			for(int i = 0; i < 4; i++) {
-				columnCursor->edges[i].centroid.x += shift.x;
-				columnCursor->edges[i].centroid.y += shift.y;
+				cursor->edges[i].centroid.x += shift.x;
+				cursor->edges[i].centroid.y += shift.y;
 			}
 
 			// copy the data within the piece outline to the final image
@@ -1142,35 +1138,29 @@ void displayPuzzle(PuzzlePiece *root, bool verbose, bool checkRotation) {
 				imshow("temp", mask);
 				waitKey(0);
 			}
-			transformed.copyTo(completedPuzzle, mask);
+			transformed.copyTo(completedPuzzleImg, mask);
 			if(verbose) {
 				cout << "show completed puzzle with new piece" << endl;
-				imshow("temp", completedPuzzle);
+				imshow("temp", completedPuzzleImg);
 				waitKey(0);
 			}
-
-			columnCursor = columnCursor->rightNeighbor;
-			col++;
 		}
-		cout << endl;
-		rowCursor = rowCursor->downNeighbor;
-		row++;
 	}
 
 	if(checkRotation) cout << "Enter degrees of clockwise rotation" << endl;
 
 	// show completed puzzle
-	imshow("temp", completedPuzzle);
+	imshow("temp", completedPuzzleImg);
 	waitKey(0);
 
 	if(checkRotation) {
 		string rotationStr;
 		cin >> rotationStr; // not sure how this interacts with waitKey()
 		int fullPuzzleRotation = stoi(rotationStr); // error handling
-		Point puzzleCenter = Point((numPiecesX * height) / 2, (numPiecesY * width) / 2);
+		Point puzzleCenter = Point((columns * height) / 2, (rows * width) / 2);
 		Mat t3 = getRotationMatrix2D(puzzleCenter, fullPuzzleRotation, 1);
-		Mat rotatedPuzzle = Mat::zeros(completedPuzzle.size(), completedPuzzle.type()); // don't want any remnants after the rotation
-		warpAffine(completedPuzzle, rotatedPuzzle, t3, rotatedPuzzle.size());
+		Mat rotatedPuzzle = Mat::zeros(completedPuzzleImg.size(), completedPuzzleImg.type()); // don't want any remnants after the rotation
+		warpAffine(completedPuzzleImg, rotatedPuzzle, t3, rotatedPuzzle.size());
 		imshow("temp", rotatedPuzzle);
 		waitKey(0);
 	}
