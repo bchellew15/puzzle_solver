@@ -48,6 +48,9 @@ public:
 	double width();
 	double height();
 	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
+	void scale(double factor);
+	void shift(Point s);
+	void rotate(double theta);
 
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
