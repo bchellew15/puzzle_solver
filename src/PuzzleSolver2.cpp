@@ -74,54 +74,50 @@ int main() {
 
 	/*
 	// test: create a fake puzzle for display
-	PuzzlePiece *root2 = &pieces[firstCornerIdx];
-	root2->rightIndex = 1;
-	root2->rightNeighbor = &pieces[4];
-	root2->downNeighbor = &pieces[0];
+	Puzzle testPuzzle = Puzzle(numPieces, pieces);
+	testPuzzle.rows = 4;
+	testPuzzle.columns = 4;
+	testPuzzle.process();
+
+	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
+	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
+	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
+	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
+	testPuzzle.completedPuzzle[0][0] = &pieces[3];
+	testPuzzle.completedPuzzle[0][1] = &pieces[4];
+	testPuzzle.completedPuzzle[0][2] = &pieces[6];
+	testPuzzle.completedPuzzle[0][3] = &pieces[7];
+	testPuzzle.completedPuzzle[1][0] = &pieces[0];
+	testPuzzle.completedPuzzle[1][1] = &pieces[13];
+	testPuzzle.completedPuzzle[1][2] = &pieces[5];
+	testPuzzle.completedPuzzle[1][3] = &pieces[14];
+	testPuzzle.completedPuzzle[2][0] = &pieces[1];
+	testPuzzle.completedPuzzle[2][1] = &pieces[11];
+	testPuzzle.completedPuzzle[2][2] = &pieces[15];
+	testPuzzle.completedPuzzle[2][3] = &pieces[12];
+	testPuzzle.completedPuzzle[3][0] = &pieces[8];
+	testPuzzle.completedPuzzle[3][1] = &pieces[9];
+	testPuzzle.completedPuzzle[3][2] = &pieces[2];
+	testPuzzle.completedPuzzle[3][3] = &pieces[10];
+
+	pieces[3].rightIndex = 1;
 	pieces[4].rightIndex = 0;
-	pieces[4].rightNeighbor = &pieces[6];
-	pieces[4].leftNeighbor = &pieces[firstCornerIdx];
 	pieces[6].rightIndex = 0;
-	pieces[6].rightNeighbor = &pieces[7];
-	pieces[6].leftNeighbor = &pieces[4];
 	pieces[7].rightIndex = 0;
-	pieces[7].leftNeighbor = &pieces[6];
 	pieces[0].rightIndex = 3;
-	pieces[0].rightNeighbor = &pieces[13];
-	pieces[0].downNeighbor = &pieces[1];
-	pieces[0].upNeighbor = &pieces[firstCornerIdx];
 	pieces[13].rightIndex = 1;
-	pieces[13].rightNeighbor = &pieces[5];
-	pieces[13].leftNeighbor = &pieces[0];
 	pieces[5].rightIndex = 0;
-	pieces[5].rightNeighbor = &pieces[14];
-	pieces[5].leftNeighbor = &pieces[13];
 	pieces[14].rightIndex = 1;
-	pieces[14].leftNeighbor = &pieces[5];
 	pieces[1].rightIndex = 3;
-	pieces[1].upNeighbor = &pieces[0];
-	pieces[1].rightNeighbor = &pieces[11];
-	pieces[1].downNeighbor = &pieces[8];
 	pieces[11].rightIndex = 2;
-	pieces[11].leftNeighbor = &pieces[1];
-	pieces[11].rightNeighbor = &pieces[15];
 	pieces[15].rightIndex = 1;
-	pieces[15].leftNeighbor = &pieces[11];
-	pieces[15].rightNeighbor = &pieces[12];
 	pieces[12].rightIndex = 3;
-	pieces[12].leftNeighbor = &pieces[15];
 	pieces[8].rightIndex = 1;
-	pieces[8].upNeighbor = &pieces[1];
-	pieces[8].rightNeighbor = &pieces[9];
 	pieces[9].rightIndex = 3;
-	pieces[9].leftNeighbor = &pieces[8];
-	pieces[9].rightNeighbor = &pieces[2];
 	pieces[2].rightIndex = 2;
-	pieces[2].leftNeighbor = &pieces[9];
-	pieces[2].rightNeighbor = &pieces[10];
 	pieces[10].rightIndex = 0;
-	pieces[10].leftNeighbor = &pieces[2];
-	displayPuzzle(root2, true);
+
+	testPuzzle.display(true);
 	exit(0);
 	*/
 
@@ -700,18 +696,18 @@ void PuzzlePiece::process(bool verbose) {
 	edges[2].edge = constructEdge(outline, bl_index, br_index);
 	edges[3].edge = constructEdge(outline, tl_index, bl_index);
 
-//	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
-//		Moments m = moments(edges[i].edge);
-//		int cx = int(m.m10/m.m00);
-//		int cy = int(m.m01/m.m00);
-//		edges[i].centroid = Point(cx, cy);
-//	}
+	// todo: verify that these edges are reasonable e.g. have more than a couple points
+
+	//	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
+	//		Moments m = moments(edges[i].edge);
+	//		int cx = int(m.m10/m.m00);
+	//		int cy = int(m.m01/m.m00);
+	//		edges[i].centroid = Point(cx, cy);
+	//	}
 	edges[0].centroid = Point(core.tl().x + core.width/2, core.tl().y);  // Point data type?
 	edges[1].centroid = Point(core.br().x, core.tl().y + core.height/2);
 	edges[2].centroid = Point(core.tl().x + core.width/2, core.br().y);
 	edges[3].centroid = Point(core.tl().x, core.tl().y + core.height/2);
-
-	// todo: verify that these edges are reasonable e.g. have more than a couple points
 
 	if(verbose) {
 		// reset the image and plot the edges
@@ -914,6 +910,28 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 	}
 }
 
+// image, outline, core, edges
+void PuzzlePiece::scale(double factor) {
+	resize(img, img, Size(img.size[1] * factor, img.size[0] * factor));  // does this resize the Mat?
+	for(Point &p: outline) {
+		p.x *= factor;
+		p.y *= factor; // can multiply a Point?
+	}
+	core = Rect(core.x * factor, core.y * factor, core.width * factor, core.height * factor);
+	for(int i = 0; i < 4; i++) {
+		edges[i].centroid.x *= factor;
+		edges[i].centroid.y *= factor;
+	}
+}
+
+void PuzzlePiece::shift(Point s) {
+
+}
+
+void PuzzlePiece::rotate(double theta) {
+
+}
+
 Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
 	numPieces = _numPieces;
 	pieces = _pieces;
@@ -1029,7 +1047,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 
 	namedWindow("temp");
 
-	// traverse the puzzle to figure out the size needed.
+	// figure out the size needed (come up with better way)
 	double width = completedPuzzle[0][0]->width();
 	double height = completedPuzzle[0][0]->height();
 	double edgeLength = max(columns * width, rows * height); // leave room for rotating at the end
@@ -1046,6 +1064,27 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
 
 			PuzzlePiece *cursor = completedPuzzle[row][col];
+			PuzzlePiece *leftNeighbor;
+			PuzzlePiece *upNeighbor;
+
+			// scale the piece based on up and left neighbors
+			// (need to scale core and outline also... maybe make functions to do transformations on all together)
+			// note: can't trust core.height and core.width yet bc rotate() function is not implemented
+			double scaleFactor = 1;
+			if(row == 0 && col == 0) { scaleFactor = 1; }
+			else if(row == 0) {
+				leftNeighbor = completedPuzzle[0][col-1];
+				scaleFactor = (double)(leftNeighbor->height()) / cursor->height();
+			} else if(col == 0) {
+				upNeighbor = completedPuzzle[row-1][0];
+				scaleFactor = (double)(upNeighbor->width()) / cursor->width();
+			} else {
+				leftNeighbor = completedPuzzle[row][col-1];
+				upNeighbor = completedPuzzle[row-1][col];
+				scaleFactor = (((double)(leftNeighbor->height()) / cursor->height()) + ((double)(upNeighbor->width()) / cursor->width())) / 2;
+			}
+			cout << "Scale factor: " << scaleFactor << endl;
+			cursor->scale(scaleFactor);
 
 			// transformations: rotate and shift the puzzle piece
 			Mat img_copy = cursor->img.clone();
