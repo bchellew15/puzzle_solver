@@ -72,7 +72,6 @@ int main() {
 		pieces[i] = PuzzlePiece(images[i], i); // last argument is "verbose"
 	}
 
-	/*
 	// test: create a fake puzzle for display
 	Puzzle testPuzzle = Puzzle(numPieces, pieces);
 	testPuzzle.rows = 4;
@@ -119,7 +118,6 @@ int main() {
 
 	testPuzzle.display(true);
 	exit(0);
-	*/
 
 	// test: compare all edges to each other
 	/*
@@ -698,17 +696,6 @@ void PuzzlePiece::process(bool verbose) {
 
 	// todo: verify that these edges are reasonable e.g. have more than a couple points
 
-	//	for(int i = 0; i < 4; i++) {  // make this part of constructEdge?
-	//		Moments m = moments(edges[i].edge);
-	//		int cx = int(m.m10/m.m00);
-	//		int cy = int(m.m01/m.m00);
-	//		edges[i].centroid = Point(cx, cy);
-	//	}
-	edges[0].centroid = Point(core.tl().x + core.width/2, core.tl().y);  // Point data type?
-	edges[1].centroid = Point(core.br().x, core.tl().y + core.height/2);
-	edges[2].centroid = Point(core.tl().x + core.width/2, core.br().y);
-	edges[3].centroid = Point(core.tl().x, core.tl().y + core.height/2);
-
 	if(verbose) {
 		// reset the image and plot the edges
 		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
@@ -888,6 +875,7 @@ double PuzzlePiece::rotationAngle() {
 }
 
 // flips width and height if piece is rotated
+// may be able to deprecate this; only used once to detemine size of final puzzle
 double PuzzlePiece::width() {
 	if(rotationAngle() == 0 || rotationAngle() == 180) return core.width;
 	return core.height;
@@ -896,6 +884,12 @@ double PuzzlePiece::width() {
 double PuzzlePiece::height() {
 	if(rotationAngle() == 0 || rotationAngle() == 180) return core.height;
 	return core.width;
+}
+
+Point PuzzlePiece::center() {
+	double x_center = core.tl().x + core.width / 2;
+	double y_center = core.tl().y + core.height / 2;
+	return Point(x_center, y_center);
 }
 
 // note: outline should be oriented counter clockwise bc outer contour. but, I don't think that guarantees sequential order.
@@ -918,18 +912,35 @@ void PuzzlePiece::scale(double factor) {
 		p.y *= factor; // can multiply a Point?
 	}
 	core = Rect(core.x * factor, core.y * factor, core.width * factor, core.height * factor);
-	for(int i = 0; i < 4; i++) {
-		edges[i].centroid.x *= factor;
-		edges[i].centroid.y *= factor;
+	// skip edges
+}
+
+// image, outline, core, edges
+void PuzzlePiece::shift(Point s, Size newSize) {
+	double t_values[] = {1, 0, (double)s.x,
+										0, 1, (double)s.y};
+	Mat t_shift = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
+	warpAffine(img, img, t_shift, newSize);  // may want to preserve the original image...
+	for(Point &p: outline) { p += s; }
+	core = Rect(core.x + s.x, core.y + s.y, core.width, core.height);
+	// skip edges
+}
+
+// allow for other angles of rotation (esp. for core)
+void PuzzlePiece::rotate(Point rotationCenter, double theta) {
+	Mat t = getRotationMatrix2D(rotationCenter, theta, 1);
+	warpAffine(img, img, t, img.size());
+
+	for(Point &p: outline) {
+		double temp_x = p.x;
+		p.x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
+		p.y = t.at<double>(1, 0) * temp_x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
 	}
-}
 
-void PuzzlePiece::shift(Point s) {
-
-}
-
-void PuzzlePiece::rotate(double theta) {
-
+	// rotate core, assuming rotationCenter is center of piece
+	if(theta == 90 || theta == 270) {
+		core = Rect(core.tl().x + core.width/2 - core.height/2, core.tl().y + core.height/2 - core.width/2, core.height, core.width);
+	} // else core stays the same
 }
 
 Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
@@ -1067,6 +1078,18 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			PuzzlePiece *leftNeighbor;
 			PuzzlePiece *upNeighbor;
 
+			// rotate about the center of the piece
+			// rotate before scaling so the width / height are correct
+			Point rotationCenter = Point(cursor->core.tl().x + cursor->core.width/2, cursor->core.tl().y + cursor->core.height/2);
+			cursor->rotate(rotationCenter, cursor->rotationAngle());
+			if(verbose) {
+				cout << "after just rotation:" << endl;
+				imshow("temp", cursor->img);
+				waitKey(0);
+			}
+
+			cout << "checkpoint 1" << endl;
+
 			// scale the piece based on up and left neighbors
 			// (need to scale core and outline also... maybe make functions to do transformations on all together)
 			// note: can't trust core.height and core.width yet bc rotate() function is not implemented
@@ -1074,45 +1097,22 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			if(row == 0 && col == 0) { scaleFactor = 1; }
 			else if(row == 0) {
 				leftNeighbor = completedPuzzle[0][col-1];
-				scaleFactor = (double)(leftNeighbor->height()) / cursor->height();
+				scaleFactor = (double)(leftNeighbor->core.height) / cursor->core.height;
 			} else if(col == 0) {
 				upNeighbor = completedPuzzle[row-1][0];
-				scaleFactor = (double)(upNeighbor->width()) / cursor->width();
+				scaleFactor = (double)(upNeighbor->core.width) / cursor->core.width;
 			} else {
-				leftNeighbor = completedPuzzle[row][col-1];
-				upNeighbor = completedPuzzle[row-1][col];
-				scaleFactor = (((double)(leftNeighbor->height()) / cursor->height()) + ((double)(upNeighbor->width()) / cursor->width())) / 2;
+				leftNeighbor = completedPuzzle[row][0];  // all the way left
+				upNeighbor = completedPuzzle[0][col];  // all the way up
+				scaleFactor = (((double)(leftNeighbor->core.height) / cursor->core.height) + ((double)(upNeighbor->core.width) / cursor->core.width)) / 2;
 			}
 			cout << "Scale factor: " << scaleFactor << endl;
 			cursor->scale(scaleFactor);
 
-			// transformations: rotate and shift the puzzle piece
-			Mat img_copy = cursor->img.clone();
-			Mat transformed = Mat::zeros(completedPuzzleImg.size(), completedPuzzleImg.type());
 			if(verbose) {
-				cout << "show image" << endl;
+				cout << "scaled image" << endl;
 				imshow("temp", cursor->img);
 				waitKey(0);
-			}
-			cout << "top left coordinate: " << cursor->core.tl() << endl;
-			cout << "x shift: " << col * width - cursor->core.tl().x << endl;
-			cout << "y shift: " << row * height - cursor->core.tl().y << endl;
-			// rotate about the center of the piece
-			Point rotationCenter = Point(cursor->core.tl().x + cursor->core.width/2, cursor->core.tl().y + cursor->core.height/2);
-			Mat t1 = getRotationMatrix2D(rotationCenter, cursor->rotationAngle(), 1);
-			cout << "rotation matrix: " << t1 << endl;
-			warpAffine(img_copy, img_copy, t1, img_copy.size());
-			if(verbose) {
-				cout << "after just rotation:" << endl;
-				imshow("temp", img_copy);
-				waitKey(0);
-			}
-			// rotate the centroids of the current piece
-			for(int i = 0; i < 4; i++) {
-				double cx = cursor->edges[i].centroid.x;
-				double cy = cursor->edges[i].centroid.y;
-				cursor->edges[i].centroid.x = t1.at<double>(0, 0) * cx + t1.at<double>(0, 1) * cy + t1.at<double>(0, 2);
-				cursor->edges[i].centroid.y = t1.at<double>(1, 0) * cx + t1.at<double>(1, 1) * cy + t1.at<double>(1, 2);
 			}
 
 			// now translate
@@ -1121,63 +1121,44 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			Point2f shift; // about converting int to double if I just do Point
 
 			if(row == 0 && col == 0) {  // top left corner
-				if(cursor->rotationAngle() == 90 || cursor->rotationAngle() == 270) {
-					cout << "shifting TL corner bc of rotation" << endl;
-					Point rotated_tl = cursor->core.tl()
-							+ Point(cursor->core.width/2 - cursor->core.height/2,
-									cursor->core.height/2 - cursor->core.width/2);
-					// cout << "new TL corner: " << rotated_tl << endl;
-					shift = -rotated_tl;
-				} else {
-					shift = -cursor->core.tl();
-				}
+				shift = -(cursor->core.tl());
 			} else if(col == 0) {  // left edge
 				PuzzlePiece *upNeighbor = completedPuzzle[row-1][col];
-				Point prevCentroid = upNeighbor->edges[upNeighbor->downIndex()].centroid;
-				Point currentCentroid = cursor->edges[PuzzlePiece::oppIndex(cursor->downIndex())].centroid;
-				shift = prevCentroid - currentCentroid;
-			} else {  // most pieces
+				shift = upNeighbor->center() + Point(0, upNeighbor->core.height / 2 + cursor->core.height / 2) - cursor->center();
+			} else if(row == 0) {  // top edge
 				PuzzlePiece *leftNeighbor = completedPuzzle[row][col-1];
-				Point prevCentroid = leftNeighbor->edges[leftNeighbor->rightIndex].centroid;
-				Point currentCentroid = cursor->edges[PuzzlePiece::oppIndex(cursor->rightIndex)].centroid;
-				shift = prevCentroid - currentCentroid;
+				shift = leftNeighbor->center() + Point(leftNeighbor->core.width / 2 + cursor->core.width / 2, 0) - cursor->center();
+				cout << "left neighbor center: " << leftNeighbor->center() << endl;
+				cout << "final location: " << leftNeighbor->center() + Point(leftNeighbor->core.width / 2 + cursor->core.width / 2, 0) << endl;
+				cout << "initial location: " << cursor->center() << endl;
+				cout << "shift amount: " << shift << endl;
+			} else {  // most pieces
+				PuzzlePiece *upNeighbor = completedPuzzle[row-1][col];
+				PuzzlePiece *leftNeighbor = completedPuzzle[row][col-1];
+				double shiftX = upNeighbor->center().x - cursor->center().x;
+				double shiftY = leftNeighbor->center().y - cursor->center().y;
+				shift = Point(shiftX, shiftY);
 			}
 
-			double t_values[] = {1, 0, shift.x,
-												0, 1, shift.y};
-			Mat t2 = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
-			cout << "translation matrix: " << t2 << endl;
-			warpAffine(img_copy, transformed, t2, transformed.size());
+			cout << "checkpoint 2" << endl;
+
+			cursor->shift(shift, completedPuzzleImg.size());  // this makes cursor->img permanently much bigger, taking up a lot of RAM...
 			if(verbose) {
 				cout << "show completed transformation" << endl;
-				imshow("temp", transformed);
+				imshow("temp", cursor->img);
 				waitKey(0);
 			}
 
-			// also need to shift AND rotate the outline
-			vector<Point> shifted_outline = cursor->outline;  // verify how this assignment works
-			// shifted_outline += Point(col * width - columnCursor->core.tl().x, row * height - columnCursor->core.tl().y);
-			for(Point &p: shifted_outline) {
-				double temp_x = p.x;
-				p.x = t1.at<double>(0, 0) * p.x + t1.at<double>(0, 1) * p.y + t1.at<double>(0, 2) + shift.x;
-				p.y = t1.at<double>(1, 0) * temp_x + t1.at<double>(1, 1) * p.y + t1.at<double>(1, 2) + shift.y;
-			}
-			// and shift the centroids
-			for(int i = 0; i < 4; i++) {
-				cursor->edges[i].centroid.x += shift.x;
-				cursor->edges[i].centroid.y += shift.y;
-			}
-
 			// copy the data within the piece outline to the final image
-			Mat mask = Mat::zeros(transformed.size(), transformed.type());
-			vector<vector<Point>> outlines = {shifted_outline};
+			Mat mask = Mat::zeros(cursor->img.size(), cursor->img.type());
+			vector<vector<Point>> outlines = {cursor->outline};
 			drawContours(mask, outlines, -1, Scalar(255, 255, 255), -1); // thickness=-1 fills in the contour
 			if(verbose) {
 				cout << "show mask" << endl;
 				imshow("temp", mask);
 				waitKey(0);
 			}
-			transformed.copyTo(completedPuzzleImg, mask);
+			cursor->img.copyTo(completedPuzzleImg, mask);
 			if(verbose) {
 				cout << "show completed puzzle with new piece" << endl;
 				imshow("temp", completedPuzzleImg);

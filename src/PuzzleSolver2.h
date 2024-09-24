@@ -11,7 +11,6 @@
 class EdgeOfPiece {
 public:
 	vector<Point> edge;
-	Point centroid;
 	bool isEdgeVar = false;
 
 	bool isEdge();
@@ -29,7 +28,7 @@ public:
 	vector<Point> outline;
 	Rect core;
 	int number; //the number of the piece
-	double theta = 0; // counterclockwise rotation required for the image of this piece
+	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	bool isConnected = false; // whether this piece has been connected to the puzzle
 	static double scalingLength;
@@ -47,10 +46,11 @@ public:
 	double rotationAngle();
 	double width();
 	double height();
+	Point center();
 	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
 	void scale(double factor);
-	void shift(Point s);
-	void rotate(double theta);
+	void shift(Point s, Size newSize);
+	void rotate(Point rotationCenter, double theta);
 
 	//search through all the pieces until it finds a match
 	//returns a pointer the piece with matching index
