@@ -178,6 +178,7 @@ int main() {
 }
 
 double PuzzlePiece::scalingLength = 0;
+double PuzzlePiece::avgBrightness = 0;
 
 // close to 0 is a good match
 double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
@@ -297,6 +298,7 @@ void PuzzlePiece::process(bool verbose) {
 	double s_channel_max = backgroundColors[0][1];
 	double v_channel_min = backgroundColors[0][2];
 	double v_channel_max = backgroundColors[0][2];
+	double total_v = 0;
 	for(Scalar c: backgroundColors) {
 		if(c[0] < h_channel_min) h_channel_min = c[0];
 		if(c[0] > h_channel_max) h_channel_max = c[0];
@@ -304,10 +306,12 @@ void PuzzlePiece::process(bool verbose) {
 		if(c[1] > s_channel_max) s_channel_max = c[1];
 		if(c[2] < v_channel_min) v_channel_min = c[2];
 		if(c[2] > v_channel_max) v_channel_max = c[2];
+		total_v += c[2];
 	}
 	double h_channel_width = h_channel_max - h_channel_min;
 	double s_channel_width = s_channel_max - s_channel_min;
 	double v_channel_width = v_channel_max - v_channel_min;
+	double v_avg = total_v / backgroundColors.size();
 
 	// for light green background: (0.5, 1.5, 1.5)
 	// for white background: (1, 5, 5) is ok not great
@@ -337,6 +341,12 @@ void PuzzlePiece::process(bool verbose) {
 		imshow("grey", color_mask);
 		waitKey(0);
 	}
+
+	// scale the brightnes level
+	if(PuzzlePiece::avgBrightness == 0) {
+		PuzzlePiece::avgBrightness = v_avg;
+	}
+	img = img * PuzzlePiece::avgBrightness / v_avg;
 
 	vector<vector<Point>> contours;
 	findContours(color_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
