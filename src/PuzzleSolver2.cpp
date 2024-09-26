@@ -43,7 +43,7 @@ int main() {
 	*/
 
 	bool process_verbose = false;
-	bool match_verbose = true;
+	bool match_verbose = false;
 
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
@@ -206,51 +206,59 @@ double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 	double minScore;
 	bool firstScore = true;
 
-	for(int h = 0; h < h_intervals + 1; h++) {
-		for(int w = 0; w < w_intervals + 1; w++) {
-			int e1_col_min;
-			int e1_col_max;
-			int e2_col_min;
-			int e2_col_max;
-			int e1_row_min;
-			int e1_row_max;
-			int e2_row_min;
-			int e2_row_max;
+	for(int theta = -8; theta <= 8; theta+=2) {
 
-			if(edgeImg.rows == minHeight) {
-				e1_row_min = 0;
-				e1_row_max = minHeight;
-				e2_row_min = h * pixelShift;
-				e2_row_max = h * pixelShift + minHeight;
-			} else {
-				e2_row_min = 0;
-				e2_row_max = minHeight;
-				e1_row_min = h * pixelShift;
-				e1_row_max = h * pixelShift + minHeight;
-			}
+		Mat rotEdgeImg;
+		Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+		Mat rot_t = getRotationMatrix2D(rotationCenter, theta*3.14/180, 1);
+		warpAffine(other.edgeImg180, rotEdgeImg, rot_t, other.edgeImg180.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
 
-			if(edgeImg.cols == minWidth) {
-				e1_col_min = 0;
-				e1_col_max = minWidth;
-				e2_col_min = w * pixelShift;
-				e2_col_max = w * pixelShift + minWidth;
-			} else {
-				e2_col_min = 0;
-				e2_col_max = minWidth;
-				e1_col_min = w * pixelShift;
-				e1_col_max = w * pixelShift + minWidth;
-			}
+		for(int h = 0; h < h_intervals + 1; h++) {
+			for(int w = 0; w < w_intervals + 1; w++) {
+				int e1_col_min;
+				int e1_col_max;
+				int e2_col_min;
+				int e2_col_max;
+				int e1_row_min;
+				int e1_row_max;
+				int e2_row_min;
+				int e2_row_max;
 
-			// use rotated edge for e2
-			Mat e1 = edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
-			Mat e2 = other.edgeImg180.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
+				if(edgeImg.rows == minHeight) {
+					e1_row_min = 0;
+					e1_row_max = minHeight;
+					e2_row_min = h * pixelShift;
+					e2_row_max = h * pixelShift + minHeight;
+				} else {
+					e2_row_min = 0;
+					e2_row_max = minHeight;
+					e1_row_min = h * pixelShift;
+					e1_row_max = h * pixelShift + minHeight;
+				}
 
-			double score = edgeComparisonScore(e1, e2);
-			if(firstScore) {
-				firstScore = false;
-				minScore = score;
-			} else if(score < minScore) {
-				minScore = score;
+				if(edgeImg.cols == minWidth) {
+					e1_col_min = 0;
+					e1_col_max = minWidth;
+					e2_col_min = w * pixelShift;
+					e2_col_max = w * pixelShift + minWidth;
+				} else {
+					e2_col_min = 0;
+					e2_col_max = minWidth;
+					e1_col_min = w * pixelShift;
+					e1_col_max = w * pixelShift + minWidth;
+				}
+
+				// use rotated edge for e2
+				Mat e1 = edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
+				Mat e2 = rotEdgeImg.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
+
+				double score = edgeComparisonScore(e1, e2);
+				if(firstScore) {
+					firstScore = false;
+					minScore = score;
+				} else if(score < minScore) {
+					minScore = score;
+				}
 			}
 		}
 	}
@@ -1327,7 +1335,7 @@ double edgeComparisonScore(Mat edge1, Mat edge2) {
 	Mat and_mat;
 	bitwise_xor(edge1, edge2, xor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	return (sum(xor_mat)[0] - sum(and_mat)[0]) / 255;
+	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
 
 	// double score = 0;
 
