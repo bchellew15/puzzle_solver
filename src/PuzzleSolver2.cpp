@@ -133,32 +133,12 @@ int main() {
 	// I don't understand these time functions at all
 	cout << "Runtime (ms): " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
-	// test: compare all edges to each other
-	/*
-	for(int i = 0; i < numPieces-1; i++) {
-		for(int j = i+1; j < numPieces; j++) {
-			for(int k = 0; k < 4; k++) {
-				for(int l = 0; l < 4; l++) {
-					if(pieces[i].edges[k].isEdgeVar || pieces[j].edges[l].isEdgeVar) continue;
-					cout << pieces[i].edges[k].match(pieces[j].edges[l]);
-					cout << " pieces (" << i+1 << ", " << j+1 << ") edges (" << k+1 << ", " << l+1 << ")" << endl;
-				}
-			}
-		}
-	}
-	*/
-
 	/*
 	// test a specific edge
-	int testIndex = 6;
-	pieces[testIndex-1].isConnected=true;
-	pieces[testIndex-1].rightIndex = 0;
-	// pieces[testIndex-1].match(pieces[testIndex-1].rightIndex, pieces, numPieces, true);
-	// close matches:
-	double score1 = pieces[testIndex-1].edges[0].match(pieces[13].edges[3], true); // score 64
-	cout << "score1: " << score1 << endl;
-	double score2 = pieces[testIndex-1].edges[0].match(pieces[14].edges[3], true); // correct match, score ???
-	cout << "score2: " << score2 << endl;
+	Puzzle::matchEdges(pieces[1].edges[0], pieces[2].edges[0], true);
+	Puzzle::matchEdges(pieces[1].edges[0], pieces[2].edges[2], true);
+	Puzzle::matchEdges(pieces[1].edges[0], pieces[8].edges[0], true);
+	Puzzle::matchEdges(pieces[1].edges[0], pieces[11].edges[3], true);
 	exit(0);
 	*/
 
@@ -861,6 +841,8 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	int bestTheta;
 	Point bestShift;
 	bool firstScore = true;
+	Mat best_e1; // for display only
+	Mat best_e2; // for display only
 
 	for(int theta = -6; theta <= 6; theta+=3) {
 
@@ -914,13 +896,28 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 					minScore = score;
 					bestTheta = theta;
 					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min) + firstEdge.rasterShift - other.rasterShift;
+					best_e1 = e1;  // for display
+					best_e2 = e2;
 				} else if(score < minScore) {
 					minScore = score;
 					bestTheta = theta;
 					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min) + firstEdge.rasterShift - other.rasterShift;
+					best_e1 = e1;  // for display
+					best_e2 = e2;
 				}
 			}
 		}
+	}
+
+	if(verbose) {
+		Mat bothEdges = Mat::zeros(best_e1.size(), CV_8UC3);
+		Mat channels[3] = {best_e1, Mat::zeros(best_e1.size(), CV_8UC1), best_e2};
+		merge(channels, 3, bothEdges);
+
+		namedWindow("edgeMatch");
+		imshow("edgeMatch", bothEdges);
+		waitKey(0);
+		destroyWindow("edgeMatch");
 	}
 
 	PieceMatch bestMatch;
@@ -995,16 +992,6 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 			PieceMatch currentMatch = Puzzle::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
 
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
-			if(verbose) {
-				namedWindow("edge1");
-				namedWindow("edge2");
-				moveWindow("edge2", 1000, 0);
-				imshow("edge1", piece->edges[edgeIndex].edgeImg);
-				imshow("edge2", pieces[i].edges[j].edgeImg180);
-				waitKey(0);
-				destroyWindow("edge1");
-				destroyWindow("edge2");
-			}
 
 			if(firstMatch) {
 				bestMatchScore = currentMatch.score;
@@ -1361,14 +1348,16 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 
 // should do something to avoid pieces of other edges that are attached, etc.
 // it's easy to match dark space. weight matching 1s and penalize non-matching 1s (xor).
-//
+// note: if edge1 is large it can have parts cut off when comparing to smaller edges.
+//    and() is not affected but miss out on some xor() penalty. may be worth to fix.
 double edgeComparisonScore(Mat edge1, Mat edge2) {
 
 	Mat xor_mat;
 	Mat and_mat;
 	bitwise_xor(edge1, edge2, xor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
+	// return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
+	return -sum(and_mat)[0] / 255;
 
 	// double score = 0;
 
