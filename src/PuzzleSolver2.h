@@ -66,10 +66,6 @@ public:
 	double theta;
 	Point shift;
 	double score;
-
-	// for display purposes
-	Mat e1;
-	Mat e2; // e2 corresponds to "piece" instance var
 };
 
 class Puzzle {
