@@ -13,7 +13,7 @@ public:
 	vector<Point> edge;
 	Mat edgeImg;
 	Mat edgeImg180;
-	Point rasterShift;
+	Point rasterShift;  // amount edge center is shifted when made into raster image
 	bool isEdgeVar = false;
 
 	bool isEdge();
@@ -66,6 +66,10 @@ public:
 	double theta;
 	Point shift;
 	double score;
+
+	// for display purposes
+	Mat e1;
+	Mat e2; // e2 corresponds to "piece" instance var
 };
 
 class Puzzle {
@@ -85,8 +89,8 @@ public:
 	// returns a pointer the piece with matching index
 	// if no match, returns NULL
 	static PieceMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
-	static PieceMatch match(PuzzlePiece *piece, int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose=false); //finds the matching piece
-
+	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool verbose=false); //finds the matching piece
+	static Point calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min);
 
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);
