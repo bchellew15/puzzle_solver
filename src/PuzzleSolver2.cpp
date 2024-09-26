@@ -3,6 +3,7 @@
 #include <string>
 #include <iomanip> //for setw(n)
 #include <cmath>
+#include <chrono> // for timer
 using namespace std;
 
 #include <opencv2/opencv.hpp>
@@ -42,7 +43,7 @@ int main() {
 	*/
 
 	bool process_verbose = false;
-	bool match_verbose = false;
+	bool match_verbose = true;
 
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
@@ -72,6 +73,7 @@ int main() {
 		pieces[i] = PuzzlePiece(images[i], i); // last argument is "verbose"
 	}
 
+	/*
 	// test: create a fake puzzle for display
 	Puzzle testPuzzle = Puzzle(numPieces, pieces);
 	testPuzzle.rows = 4;
@@ -118,6 +120,18 @@ int main() {
 
 	testPuzzle.display(true);
 	exit(0);
+	*/
+
+	// create a Puzzle
+	Puzzle myPuzzle = Puzzle(numPieces, pieces);
+	myPuzzle.process(process_verbose);
+
+	// time edge comparison
+	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
+	pieces[0].edges[0].match(pieces[1].edges[0]);
+	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
+	// I don't understand these time functions at all
+	cout << "Runtime (ms): " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
 	// test: compare all edges to each other
 	/*
@@ -164,12 +178,9 @@ int main() {
 	}
 	*/
 
-	// create a Puzzle
-	Puzzle myPuzzle = Puzzle(numPieces, pieces);
-	myPuzzle.process(process_verbose);
+	// assemble
 	myPuzzle.assemble(match_verbose);
-
-	cout<<"Loaded!" << endl;
+	cout<<"Assembled" << endl;
 
 	myPuzzle.print();
 	myPuzzle.display(true);
@@ -182,6 +193,39 @@ double PuzzlePiece::avgBrightness = 0;
 
 // close to 0 is a good match
 double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
+
+	// first attempt: simple subtraction
+	int minHeight = min(edgeImg.rows, other.edgeImg.rows);
+	int minWidth = min(edgeImg.cols, other.edgeImg.cols);
+	int e1_col_min = edgeImg.cols/2 - minWidth/2;
+	int e1_col_max = edgeImg.cols/2 + minWidth/2;
+	int e2_col_min = other.edgeImg.cols/2 - minWidth/2;
+	int e2_col_max = other.edgeImg.cols/2 + minWidth/2;
+
+	Mat e1 = edgeImg.rowRange(0, minHeight).colRange(e1_col_min, e1_col_max);
+	Mat e2 = other.edgeImg.rowRange(other.edgeImg.rows-minHeight, other.edgeImg.rows).colRange(e2_col_min, e2_col_max);
+	// seems like there is somehow a guarantee that widths will be the same.
+	cout << e1.at<uchar>(0, 0) << endl;
+	cout << e2.at<uchar>(e2.rows-1, e2.cols-1) << endl;
+	double score = 0;
+	for(int row = 1; row < e1.rows; row++) {
+		for(int col = 1; col < e1.cols; col++) {
+			// effectively rotating the 2nd image by flipping both coordinates
+			score += abs((int)e1.at<uchar>(row, col) - (int)e2.at<uchar>(e2.rows-row-1, e2.cols-col-1));
+		}
+	}
+	score /= (e1.rows * e1.cols);
+	cout << "total score: " << score << endl;
+	return score;
+
+	if(verbose) {
+		namedWindow("compare edges");
+		imshow("compare edges", e1);
+		waitKey(0);
+		imshow("compare edges", e2);
+		waitKey(0);
+		destroyWindow("compare edges");
+	}
 
 	// prep by rotating one edge (by flipping twice)
 	vector<Point> flippedEdge = vector<Point>(other.edge.size());
@@ -726,18 +770,18 @@ void PuzzlePiece::process(bool verbose) {
 	for(int i = 0; i < 4; i++) {
 		// check if these are actual edges and set isEdgeVar
 		edges[i].isEdgeVar = edges[i].isEdge();
+		if(edges[i].isEdgeVar) { continue; }
 
 		// rotate and translate the edges for easier comparison
 		// translate all the edges to line up with the origin
 		// (easier to line up edges from images w different dimensions. can translate again to display.)
-		if(!edges[i].isEdgeVar) {
-			Rect edgeBound = boundingRect(edges[i].edge);
-			double mid_x = (edgeBound.tl().x + edgeBound.br().x) / 2;
-			double mid_y = (edgeBound.tl().y + edgeBound.br().y) / 2;
-			for(Point &p: edges[i].edge) {
-				p.x -= mid_x;
-				p.y -= mid_y;
-			}
+		Point midPoint;
+		if(i == 0) { midPoint = core.tl() + Point(core.width/2, 0); }
+		if(i == 1) { midPoint = core.tl() + Point(core.width, core.height/2); }
+		if(i == 2) { midPoint = core.tl() + Point(core.width/2, core.height); }
+		if(i == 3) { midPoint = core.tl() + Point(0, core.height/2); }
+		for(Point &p: edges[i].edge) {
+			p -= midPoint;
 		}
 	}
 
@@ -765,6 +809,19 @@ void PuzzlePiece::process(bool verbose) {
 		}
 	}
 
+	// create raster images of the edges
+	// todo: should add some buffer based on the thickness of the line that will be used
+	int dotRadius = 10;
+	for(int i = 0; i < 4; i++) {
+		Rect edgeBound = boundingRect(edges[i].edge);
+		Mat edgeImg = Mat::zeros(edgeBound.height + 2*dotRadius, edgeBound.width + 2*dotRadius, CV_8UC1);
+		for(Point p: edges[i].edge) {
+			Point circleLoc = p - Point(edgeBound.x, edgeBound.y) + Point(dotRadius, dotRadius);
+			circle(edgeImg, circleLoc, dotRadius, 255, -1);
+		}
+		edges[i].edgeImg = edgeImg;  // same name causes any problems?
+	}
+
 	if(verbose) {
 			// reset the image and plot the edges
 			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
@@ -780,6 +837,9 @@ void PuzzlePiece::process(bool verbose) {
 				if(!edges[i].isEdgeVar) drawContours(img_copy, edge_vector, i, colors[i], 5);
 			}
 			imshow("grey", img_copy);
+			waitKey(0);
+
+			imshow("grey", edges[0].edgeImg);
 			waitKey(0);
 		}
 
