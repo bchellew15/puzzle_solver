@@ -1145,6 +1145,7 @@ void Puzzle::assemble(bool verbose) {
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
+		cursor->correctionShift = Point(-matchingPiece.shift.y, matchingPiece.shift.x);  // rotate clockwise 90deg
 	}
 	columns = completedPuzzle[0].size();
 	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
@@ -1356,8 +1357,7 @@ double edgeComparisonScore(Mat edge1, Mat edge2) {
 	Mat and_mat;
 	bitwise_xor(edge1, edge2, xor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	// return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
-	return -sum(and_mat)[0] / 255;
+	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
 
 	// double score = 0;
 
