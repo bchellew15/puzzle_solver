@@ -35,6 +35,7 @@ public:
 	bool isConnected = false; // whether this piece has been connected to the puzzle
 	static double scalingLength;
 	static double avgBrightness;
+	Point correctionShift;
 
 	void process(bool verbose=false); // process the image and get edge shapes
 	bool isCorner();
