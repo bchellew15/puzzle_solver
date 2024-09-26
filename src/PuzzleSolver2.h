@@ -13,11 +13,11 @@ public:
 	vector<Point> edge;
 	Mat edgeImg;
 	Mat edgeImg180;
+	Point rasterShift;
 	bool isEdgeVar = false;
 
 	bool isEdge();
 	void rotate_edge(vector<Point> unrotated, double theta);
-	double match(EdgeOfPiece other, bool verbose=false);
 };
 
 class PuzzlePiece {
@@ -55,13 +55,17 @@ public:
 	void shift(Point s, Size newSize);
 	void rotate(Point rotationCenter, double theta);
 
-	//search through all the pieces until it finds a match
-	//returns a pointer the piece with matching index
-	//if no match, returns NULL
-	pair<PuzzlePiece*, int> match(int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose=false); //finds the matching piece
-
 	//constructors:
 	//PuzzlePiece();
+};
+
+class PieceMatch {
+public:
+	PuzzlePiece *piece;
+	int edgeIndex;
+	double theta;
+	Point shift;
+	double score;
 };
 
 class Puzzle {
@@ -76,6 +80,13 @@ public:
 	int columns;
 	vector<double> rowHs;
 	vector<double> colWs;
+
+	// search through all the pieces until it finds a match
+	// returns a pointer the piece with matching index
+	// if no match, returns NULL
+	static PieceMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
+	static PieceMatch match(PuzzlePiece *piece, int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose=false); //finds the matching piece
+
 
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);
