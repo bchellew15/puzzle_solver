@@ -82,6 +82,6 @@ public:
 	void display(bool verbose=false, bool checkRotation=true);
 };
 
-double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2);
+double edgeComparisonScore(Mat edge1, Mat edge2);
 
 #endif /* PUZZLESOLVER2_H_ */

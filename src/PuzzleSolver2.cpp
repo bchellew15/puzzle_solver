@@ -194,38 +194,67 @@ double PuzzlePiece::avgBrightness = 0;
 // close to 0 is a good match
 double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 
-	// first attempt: simple subtraction
-	int minHeight = min(edgeImg.rows, other.edgeImg.rows);
-	int minWidth = min(edgeImg.cols, other.edgeImg.cols);
-	int e1_col_min = edgeImg.cols/2 - minWidth/2;
-	int e1_col_max = edgeImg.cols/2 + minWidth/2;
-	int e2_col_min = other.edgeImg.cols/2 - minWidth/2;
-	int e2_col_max = other.edgeImg.cols/2 + minWidth/2;
+	int pixelShift = 5;
 
-	Mat e1 = edgeImg.rowRange(0, minHeight).colRange(e1_col_min, e1_col_max);
-	Mat e2 = other.edgeImg.rowRange(other.edgeImg.rows-minHeight, other.edgeImg.rows).colRange(e2_col_min, e2_col_max);
-	// seems like there is somehow a guarantee that widths will be the same.
-	cout << e1.at<uchar>(0, 0) << endl;
-	cout << e2.at<uchar>(e2.rows-1, e2.cols-1) << endl;
-	double score = 0;
-	for(int row = 1; row < e1.rows; row++) {
-		for(int col = 1; col < e1.cols; col++) {
-			// effectively rotating the 2nd image by flipping both coordinates
-			score += abs((int)e1.at<uchar>(row, col) - (int)e2.at<uchar>(e2.rows-row-1, e2.cols-col-1));
+	int minHeight = min(edgeImg.rows, other.edgeImg.rows);
+	int maxHeight = max(edgeImg.rows, other.edgeImg.rows);
+	int h_intervals = (maxHeight - minHeight) / pixelShift;
+	int minWidth = min(edgeImg.cols, other.edgeImg.cols);
+	int maxWidth = max(edgeImg.cols, other.edgeImg.cols);
+	int w_intervals = (maxWidth - minWidth) / pixelShift;
+
+	double minScore = 1000;
+
+	for(int h = 0; h < h_intervals + 1; h++) {
+		for(int w = 0; w < w_intervals + 1; w++) {
+			int e1_col_min;
+			int e1_col_max;
+			int e2_col_min;
+			int e2_col_max;
+			int e1_row_min;
+			int e1_row_max;
+			int e2_row_min;
+			int e2_row_max;
+
+			if(edgeImg.rows == minHeight) {
+				e1_row_min = 0;
+				e1_row_max = minHeight;
+				e2_row_min = h * pixelShift;
+				e2_row_max = h * pixelShift + minHeight;
+			} else {
+				e2_row_min = 0;
+				e2_row_max = minHeight;
+				e1_row_min = h * pixelShift;
+				e1_row_max = h * pixelShift + minHeight;
+			}
+
+			if(edgeImg.cols == minWidth) {
+				e1_col_min = 0;
+				e1_col_max = minWidth;
+				e2_col_min = w * pixelShift;
+				e2_col_max = w * pixelShift + minWidth;
+			} else {
+				e2_col_min = 0;
+				e2_col_max = minWidth;
+				e1_col_min = w * pixelShift;
+				e1_col_max = w * pixelShift + minWidth;
+			}
+
+			Mat e1 = edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
+			Mat e2 = other.edgeImg.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
+
+			double score = edgeComparisonScore(e1, e2);
+			if(score < minScore) {
+				minScore = score;
+			}
 		}
 	}
-	score /= (e1.rows * e1.cols);
-	cout << "total score: " << score << endl;
-	return score;
 
-	if(verbose) {
-		namedWindow("compare edges");
-		imshow("compare edges", e1);
-		waitKey(0);
-		imshow("compare edges", e2);
-		waitKey(0);
-		destroyWindow("compare edges");
-	}
+	return minScore;
+
+	// ISSUE: these print blanks
+	// cout << e1.at<uchar>(0, 0) << endl;
+	// cout << e2.at<uchar>(e2.rows-1, e2.cols-1) << endl;
 
 	// prep by rotating one edge (by flipping twice)
 	vector<Point> flippedEdge = vector<Point>(other.edge.size());
@@ -265,8 +294,6 @@ double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 	// also don't know what's up w the create() function
 	// Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
 	// return h->computeDistance(edge, flippedEdge);
-
-	return max(edgeComparisonScore(edge, flippedEdge), edgeComparisonScore(flippedEdge, edge));
 
 	// return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
 }
@@ -811,7 +838,7 @@ void PuzzlePiece::process(bool verbose) {
 
 	// create raster images of the edges
 	// todo: should add some buffer based on the thickness of the line that will be used
-	int dotRadius = 10;
+	int dotRadius = 10;  // 10 looked visually good
 	for(int i = 0; i < 4; i++) {
 		Rect edgeBound = boundingRect(edges[i].edge);
 		Mat edgeImg = Mat::zeros(edgeBound.height + 2*dotRadius, edgeBound.width + 2*dotRadius, CV_8UC1);
@@ -903,6 +930,11 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 	double bestMatchScore; // find a better way to set it
 	int bestMatchPieceIdx;
 	int bestMatchEdgeIdx;
+
+	if(edges[edgeIndex].isEdgeVar) {
+		cout << "ERROR: calling match() on an edge piece" << endl;
+		return make_pair(nullptr, -1);
+	}
 
 	for(int i = 0; i < numPieces; i++) {
 		if(pieces[i].isConnected) continue; // skip if already connected
@@ -1100,6 +1132,9 @@ void Puzzle::assemble(bool verbose) {
 		for(int j = 1; j < columns; j++) {
 			PuzzlePiece *cursor = completedPuzzle[i][j-1];
 			pair<PuzzlePiece*, int> matchPair = cursor->match(cursor->rightIndex, pieces, numPieces, verbose);
+			if(matchPair.first == nullptr) {
+				cout << "ERROR: no match found" << endl;
+			}
 			cursor=matchPair.first;
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
@@ -1258,46 +1293,26 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 	destroyWindow("temp");
 }
 
-// should reverse the loop also to be more like hausdorff
-double edgeComparisonScore(vector<Point> edge1, vector<Point> edge2) {
+// should do something to avoid pieces of other edges that are attached, etc.
+// assumes edge2 needs to be rotated 180 degrees before comparison
+double edgeComparisonScore(Mat edge1, Mat edge2) {
 
-	double edgeBuffer = 100;  // in case one of the edges includes a corner + part of another edge
+	// first attempt: simple subtraction
 
-	// ignore points past the edge
-	double minX1 = edge1[0].x;
-	double maxX1 = edge1[0].x;
-	for(Point p1: edge1) {
-		if (p1.x < minX1) minX1 = p1.x;
-		if (p1.x > maxX1) maxX1 = p1.x;
-	}
-	double minX2 = edge1[0].x;
-	double maxX2 = edge1[0].x;
-	for(Point p2: edge2) {
-		if (p2.x < minX2) minX2 = p2.x;
-		if (p2.x > maxX2) maxX2 = p2.x;
-	}
-	double minX = max(minX1, minX2) + edgeBuffer;
-	double maxX = min(maxX1, maxX2) - edgeBuffer;
+	Mat xor_mat;
+	bitwise_xor(edge1, edge2, xor_mat);
+	return sum(xor_mat)[0] / (edge1.rows * edge1.cols);
 
-	// loop to find max distance
-	double maxDistance = 0;
-	for(Point p1: edge1) {
-		if(p1.x < minX || p1.x > maxX) continue;
-		double minDistance = sqrt(pow(p1.x - edge2[0].x, 2) + pow(p1.y - edge2[0].y, 2));
-		for(Point p2: edge2) {
-			if(p2.x < minX || p2.x > maxX) continue;
-			double distance = sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2));
-			if(distance < minDistance) {
-				minDistance = distance;
-				// cout << "new min distance: " << distance << endl;
-			}
-		}
-		if (minDistance > maxDistance) {
-			maxDistance = minDistance;
-			// cout << "new biggest min distance: " << maxDistance << endl;
-		}
-	}
-	return maxDistance;
+	// double score = 0;
+
+//	for(int row = 0; row < edge1.rows; row++) {
+//		for(int col = 0; col < edge1.cols; col++) {
+//			// effectively rotating the 2nd image by flipping both coordinates
+//			score += abs((int)edge1.at<uchar>(row, col) - (int)edge2.at<uchar>(edge2.rows-row-1, edge2.cols-col-1));
+//		}
+//	}
+//	score /= (edge1.rows * edge1.cols);
+//	return score;
 }
 
 //idea: use the maze searching algorithm to start with the first puzzle piece.
