@@ -825,7 +825,27 @@ int PuzzlePiece::downIndex() {
 	return nextIndex(rightIndex);
 }
 
+Point Puzzle::calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min) {
+
+	Point shift;
+
+	if(e1.rows <= e2.rows) {
+		shift.y = -(e2.rows - e2_row_max);
+	} else {
+		shift.y = e1.rows - e1_row_max;
+	}
+
+	if(e1.cols <= e2.cols) {
+		shift.x = e2.cols/2 - (e2_col_min + e1.cols/2);
+	} else {
+		shift.x = (e1_col_min + e2.cols/2) - e1.cols/2;
+	}
+
+	return shift;
+}
+
 // close to 0 is a good match
+// "bestShift" is amount 2nd edge needed to be shifted
 PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose) {
 
 	int pixelShift = 5;
@@ -893,9 +913,11 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 					firstScore = false;
 					minScore = score;
 					bestTheta = theta;
+					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min) + firstEdge.rasterShift - other.rasterShift;
 				} else if(score < minScore) {
 					minScore = score;
 					bestTheta = theta;
+					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min) + firstEdge.rasterShift - other.rasterShift;
 				}
 			}
 		}
@@ -954,7 +976,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 }
 
 // search through edges to find a match
-PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, PuzzlePiece pieces[], int numPieces, bool verbose) {
+PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 
 	PieceMatch bestMatch;
 	bool firstMatch = true;
@@ -970,7 +992,6 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, PuzzlePiece pieces[]
 		if(pieces[i].isConnected) continue; // skip if already connected
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
-			// todo: make edge "match" static?
 			PieceMatch currentMatch = Puzzle::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
 
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
@@ -1006,6 +1027,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, PuzzlePiece pieces[]
 	}
 
 	cout << "Piece " << piece->number << " matches edge " << bestMatch.edgeIndex << " of piece " << bestMatch.piece->number << endl;
+
 	return bestMatch;
 }
 
@@ -1125,17 +1147,17 @@ void Puzzle::assemble(bool verbose) {
 	cout << "Constructing top edge." << endl;
 	PuzzlePiece *cursor = completedPuzzle[0][0];
 	while(!cursor->edges[cursor->rightIndex].isEdgeVar && completedPuzzle[0].size() < numPieces) {
-		PieceMatch match = Puzzle::match(cursor, cursor->rightIndex, pieces, numPieces, verbose);
-		if(match.piece == nullptr) {
+		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
+		if(matchingPiece.piece == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
 			return;
 		}
 
-		cursor = match.piece;
+		cursor = matchingPiece.piece;
 		completedPuzzle[0].push_back(cursor);
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
-		cursor->rightIndex = PuzzlePiece::oppIndex(match.edgeIndex);
+		cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
 	}
 	columns = completedPuzzle[0].size();
 	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
@@ -1157,32 +1179,32 @@ void Puzzle::assemble(bool verbose) {
 			return;
 		}
 
-		PieceMatch match = Puzzle::match(cursor, cursor->downIndex(), pieces, numPieces, verbose);
-		if(match.piece == nullptr) {
+		PieceMatch matchingPiece = match(cursor, cursor->downIndex(), verbose);
+		if(matchingPiece.piece == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
 			return;
 		}
 
-		cursor = match.piece;
+		cursor = matchingPiece.piece;
 		completedPuzzle.push_back(vector<PuzzlePiece*>());
 		completedPuzzle[i].push_back(cursor);  // combine w previous line?
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
-		cursor->rightIndex = PuzzlePiece::nextIndex(match.edgeIndex);
+		cursor->rightIndex = PuzzlePiece::nextIndex(matchingPiece.edgeIndex);
 	}
 
 	// fill in the rest:
 	for(int i = 1; i < rows; i++) {
 		for(int j = 1; j < columns; j++) {
 			PuzzlePiece *cursor = completedPuzzle[i][j-1];
-			PieceMatch match = Puzzle::match(cursor, cursor->rightIndex, pieces, numPieces, verbose);
-			if(match.piece == nullptr) {
+			PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
+			if(matchingPiece.piece == nullptr) {
 				cout << "ERROR: no match found" << endl;
 			}
-			cursor=match.piece;
+			cursor=matchingPiece.piece;
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
-			cursor->rightIndex = PuzzlePiece::oppIndex(match.edgeIndex);
+			cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
 		}
 	}
 	// todo: check for edges in the middle of the puzzle
