@@ -203,7 +203,8 @@ double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 	int maxWidth = max(edgeImg.cols, other.edgeImg.cols);
 	int w_intervals = (maxWidth - minWidth) / pixelShift;
 
-	double minScore = 1000;
+	double minScore;
+	bool firstScore = true;
 
 	for(int h = 0; h < h_intervals + 1; h++) {
 		for(int w = 0; w < w_intervals + 1; w++) {
@@ -240,11 +241,15 @@ double EdgeOfPiece::match(EdgeOfPiece other, bool verbose) {
 				e1_col_max = w * pixelShift + minWidth;
 			}
 
+			// use rotated edge for e2
 			Mat e1 = edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
-			Mat e2 = other.edgeImg.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
+			Mat e2 = other.edgeImg180.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
 
 			double score = edgeComparisonScore(e1, e2);
-			if(score < minScore) {
+			if(firstScore) {
+				firstScore = false;
+				minScore = score;
+			} else if(score < minScore) {
 				minScore = score;
 			}
 		}
@@ -837,7 +842,6 @@ void PuzzlePiece::process(bool verbose) {
 	}
 
 	// create raster images of the edges
-	// todo: should add some buffer based on the thickness of the line that will be used
 	int dotRadius = 10;  // 10 looked visually good
 	for(int i = 0; i < 4; i++) {
 		Rect edgeBound = boundingRect(edges[i].edge);
@@ -847,6 +851,15 @@ void PuzzlePiece::process(bool verbose) {
 			circle(edgeImg, circleLoc, dotRadius, 255, -1);
 		}
 		edges[i].edgeImg = edgeImg;  // same name causes any problems?
+
+		// rotated image (there must be a faster way)
+		Mat rotatedEdgeImg = Mat::zeros(edgeImg.size(), edgeImg.type());
+		for(int row = 0; row < edgeImg.rows; row++) {
+			for(int col = 0; col < edgeImg.cols; col++) {
+				rotatedEdgeImg.at<uchar>(row, col) = edgeImg.at<uchar>(edgeImg.rows-row-1, edgeImg.cols-col-1);
+			}
+		}
+		edges[i].edgeImg180 = rotatedEdgeImg;
 	}
 
 	if(verbose) {
@@ -941,7 +954,19 @@ pair<PuzzlePiece*, int> PuzzlePiece::match(int edgeIndex, PuzzlePiece pieces[], 
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
 			double score = edges[edgeIndex].match(pieces[i].edges[j], verbose);
+
 			cout << "Piece " << number << " scores " << score << " against index " << j << " of piece " << i+1 << endl;
+			if(verbose) {
+				namedWindow("edge1");
+				namedWindow("edge2");
+				moveWindow("edge2", 1000, 0);
+				imshow("edge1", edges[edgeIndex].edgeImg);
+				imshow("edge2", pieces[i].edges[j].edgeImg180);
+				waitKey(0);
+				destroyWindow("edge1");
+				destroyWindow("edge2");
+			}
+
 			if(firstMatch) {
 				bestMatchScore = score;
 				bestMatchPieceIdx = i;
@@ -1294,14 +1319,15 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 }
 
 // should do something to avoid pieces of other edges that are attached, etc.
-// assumes edge2 needs to be rotated 180 degrees before comparison
+// it's easy to match dark space. weight matching 1s and penalize non-matching 1s (xor).
+//
 double edgeComparisonScore(Mat edge1, Mat edge2) {
 
-	// first attempt: simple subtraction
-
 	Mat xor_mat;
+	Mat and_mat;
 	bitwise_xor(edge1, edge2, xor_mat);
-	return sum(xor_mat)[0] / (edge1.rows * edge1.cols);
+	bitwise_and(edge1, edge2, and_mat);
+	return (sum(xor_mat)[0] - sum(and_mat)[0]) / 255;
 
 	// double score = 0;
 

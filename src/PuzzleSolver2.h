@@ -12,6 +12,7 @@ class EdgeOfPiece {
 public:
 	vector<Point> edge;
 	Mat edgeImg;
+	Mat edgeImg180;
 	bool isEdgeVar = false;
 
 	bool isEdge();
