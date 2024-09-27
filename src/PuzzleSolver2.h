@@ -36,13 +36,13 @@ public:
 	bool isConnected = false; // whether this piece has been connected to the puzzle
 	static double scalingLength;
 	static double avgBrightness;
-	Point correctionShift;
+	Point correctionShift;  // remove this
 	Point correctionShiftLeft;
 	Point correctionShiftUp;
-	double correctionTheta;
+	double correctionTheta;  // remove this
 	double correctionThetaLeft;
 	double correctionThetaUp;
-	double actualAdditionalRotation;
+	double finalRotationCorrection;
 
 	void process(bool verbose=false); // process the image and get edge shapes
 	bool isCorner();
