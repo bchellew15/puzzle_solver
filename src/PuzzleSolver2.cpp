@@ -42,7 +42,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	bool process_verbose = true;
+	bool process_verbose = false;
 	bool match_verbose = false;
 
 	int numPieces = 16;
@@ -352,6 +352,7 @@ void PuzzlePiece::process(bool verbose) {
 		vector<Point> temp = coin;
 		coin = outline;
 		outline = temp;
+		coinRadius = outlineRadius;
 	}
 
 	// scale everything up to regular size
@@ -1313,11 +1314,8 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				waitKey(0);
 			}
 
-			cout << "checkpoint 1" << endl;
-
+			/*
 			// scale the piece based on up and left neighbors
-			// (need to scale core and outline also... maybe make functions to do transformations on all together)
-			// note: can't trust core.height and core.width yet bc rotate() function is not implemented
 			double scaleFactor = 1;
 			if(row == 0 && col == 0) { scaleFactor = 1; }
 			else if(row == 0) {
@@ -1339,6 +1337,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				imshow("temp", cursor->img);
 				waitKey(0);
 			}
+			*/
 
 			// now translate
 			// should do in one step; I'm counting on no clipping after the rotation
