@@ -87,6 +87,7 @@ public:
 	// if no match, returns NULL
 	static PieceMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool verbose=false); //finds the matching piece
+	PieceMatch match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
 	static Point calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min);
 
 	void process(bool verbose=false);
