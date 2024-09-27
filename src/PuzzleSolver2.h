@@ -29,6 +29,7 @@ public:
 	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
 	vector<Point> outline;
 	Rect core;
+	vector<Point> midpoints = vector<Point>(4);
 	int number; //the number of the piece
 	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
 	int rightIndex; //index of edge pointing towards rightNeighbor.
@@ -36,6 +37,12 @@ public:
 	static double scalingLength;
 	static double avgBrightness;
 	Point correctionShift;
+	Point correctionShiftLeft;
+	Point correctionShiftUp;
+	double correctionTheta;
+	double correctionThetaLeft;
+	double correctionThetaUp;
+	double actualAdditionalRotation;
 
 	void process(bool verbose=false); // process the image and get edge shapes
 	bool isCorner();
@@ -50,7 +57,7 @@ public:
 	double rotationAngle();
 	double width();
 	double height();
-	Point center();
+	Point center();  // unused?
 	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
 	void scale(double factor);
 	void shift(Point s, Size newSize);
@@ -65,7 +72,11 @@ public:
 	PuzzlePiece *piece;
 	int edgeIndex;
 	double theta;
+	double thetaLeft;
+	double thetaUp;
 	Point shift;
+	Point shiftLeft;
+	Point shiftUp;
 	double score;
 };
 
@@ -88,7 +99,7 @@ public:
 	static PieceMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool verbose=false); //finds the matching piece
 	PieceMatch match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
-	static Point calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min);
+	static Point calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min, int minWidth);
 
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);
