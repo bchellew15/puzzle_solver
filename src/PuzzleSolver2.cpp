@@ -1018,6 +1018,67 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 	return bestMatch;
 }
 
+PieceMatch Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose) {
+
+	PieceMatch bestMatchLeft;
+	PieceMatch bestMatchUp;
+	bool firstMatch = true;
+	double bestMatchScore;
+
+	if(leftPiece->edges[edgeIndexOfLeft].isEdgeVar || upPiece->edges[edgeIndexOfUp].isEdgeVar) {
+		cout << "ERROR: calling match() on an edge piece" << endl;
+		bestMatchLeft.piece = nullptr;
+		return bestMatchLeft;
+	}
+
+	for(int i = 0; i < numPieces; i++) {
+		if(pieces[i].isConnected) continue; // skip if already connected
+		for(int j = 0; j < 4; j++) {
+			if(pieces[i].edges[j].isEdgeVar || pieces[i].edges[(j+1)%4].isEdgeVar) continue; // skip if either connection is an edge
+			PieceMatch matchLeft = Puzzle::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
+			PieceMatch matchUp = Puzzle::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
+			double score = matchLeft.score + matchUp.score;
+			cout << "Pieces " << leftPiece->number << " and " << upPiece->number <<
+					" score " << score << " against Piece " << pieces[i].number <<
+					" with right index " << (j+2)%4  << endl;
+
+			if(firstMatch) {
+				firstMatch = false;
+				bestMatchScore = score;
+				bestMatchLeft = matchLeft;
+				bestMatchUp = matchUp;
+				bestMatchLeft.piece = &pieces[i];
+				bestMatchLeft.edgeIndex = (j+2)%4;  // right index
+			}
+			else if(score < bestMatchScore) { // low score is best
+				bestMatchScore = score;
+				bestMatchLeft = matchLeft;
+				bestMatchUp = matchUp;
+				bestMatchLeft.piece = &pieces[i];
+				bestMatchLeft.edgeIndex = (j+2)%4;  // right index
+			}
+		}
+	}
+
+	if(firstMatch) {
+		cout << "ERROR: remaining pieces are edges only." << endl;
+		bestMatchLeft.piece = nullptr;
+		return bestMatchLeft;
+	}
+
+	// average corrections from up piece and left piece
+	// rotate the correction from upMatch
+	bestMatchUp.shift = Point(bestMatchUp.shift.y, -bestMatchUp.shift.x);  // counter clockwise
+	bestMatchLeft.shift = (bestMatchUp.shift + bestMatchLeft.shift) / 2;
+	bestMatchLeft.theta = (bestMatchUp.theta + bestMatchLeft.theta) / 2;
+	bestMatchLeft.score = bestMatchScore;
+
+	cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " match Piece "
+			<< bestMatchLeft.piece->number << " with right index " << bestMatchLeft.edgeIndex  << endl;
+
+	return bestMatchLeft;
+}
+
 void PuzzlePiece::print() {
 	cout << setw(4) << number;
 }
@@ -1145,7 +1206,8 @@ void Puzzle::assemble(bool verbose) {
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
-		cursor->correctionShift = Point(-matchingPiece.shift.y, matchingPiece.shift.x);  // rotate clockwise 90deg
+		// rotate clockwise 90deg (bc 180 deg then counter clock 90)
+		cursor->correctionShift = Point(-matchingPiece.shift.y, matchingPiece.shift.x);
 	}
 	columns = completedPuzzle[0].size();
 	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
@@ -1179,20 +1241,24 @@ void Puzzle::assemble(bool verbose) {
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::nextIndex(matchingPiece.edgeIndex);
+		cursor->correctionShift = -matchingPiece.shift;  // 180deg rotation (bc compare upside down)
 	}
 
 	// fill in the rest:
 	for(int i = 1; i < rows; i++) {
 		for(int j = 1; j < columns; j++) {
-			PuzzlePiece *cursor = completedPuzzle[i][j-1];
-			PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
+			PuzzlePiece *leftPiece = completedPuzzle[i][j-1];
+			PuzzlePiece *upPiece = completedPuzzle[i-1][j];
+			PieceMatch matchingPiece = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
 			if(matchingPiece.piece == nullptr) {
 				cout << "ERROR: no match found" << endl;
 			}
 			cursor=matchingPiece.piece;
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
-			cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
+			cursor->rightIndex = matchingPiece.edgeIndex;
+			// todo: calculate this correction based on upper AND left pieces
+			cursor->correctionShift = Point(-matchingPiece.shift.y, matchingPiece.shift.x);  // rotate clockwise 90deg
 		}
 	}
 	// todo: check for edges in the middle of the puzzle
