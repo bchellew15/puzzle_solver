@@ -673,7 +673,6 @@ void PuzzlePiece::process(bool verbose) {
 	for(int i = 0; i < 4; i++) {
 		// check if these are actual edges and set isEdgeVar
 		edges[i].isEdgeVar = edges[i].isEdge();
-		if(edges[i].isEdgeVar) { continue; }
 
 		// rotate and translate the edges for easier comparison
 		// translate all the edges to line up with the origin
@@ -684,6 +683,8 @@ void PuzzlePiece::process(bool verbose) {
 		if(i == 2) { midPoint = core.tl() + Point(core.width/2, core.height); }
 		if(i == 3) { midPoint = core.tl() + Point(0, core.height/2); }
 		midpoints[i] = midPoint;
+
+		if(edges[i].isEdgeVar) { continue; }
 		for(Point &p: edges[i].edge) {
 			p -= midPoint;
 		}
@@ -852,9 +853,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
 
-	for(int theta_deg = -6; theta_deg <= 6; theta_deg+=3) {
-
-		double theta = theta_deg * 3.14 / 180;
+	for(int theta = -6; theta <= 6; theta+=3) {
 
 		Mat rotEdgeImg;
 		Point rotationCenter = Point(firstEdge.edgeImg.cols/2, firstEdge.edgeImg.rows/2);
@@ -1135,12 +1134,9 @@ vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, in
 // image, outline, core, edges
 void PuzzlePiece::scale(double factor) {
 	resize(img, img, Size(img.size[1] * factor, img.size[0] * factor));  // does this resize the Mat?
-	for(Point &p: outline) {
-		p.x *= factor;
-		p.y *= factor; // can multiply a Point?
-	}
+	for(Point &p: outline) { p *= factor; }
 	core = Rect(core.x * factor, core.y * factor, core.width * factor, core.height * factor);
-	// skip edges
+	for(Point &p: midpoints) { p *= factor; }
 }
 
 // image, outline, core, edges
@@ -1151,7 +1147,7 @@ void PuzzlePiece::shift(Point s, Size newSize) {
 	warpAffine(img, img, t_shift, newSize);  // may want to preserve the original image...
 	for(Point &p: outline) { p += s; }
 	core = Rect(core.x + s.x, core.y + s.y, core.width, core.height);
-	// skip edges
+	for(Point &p: midpoints) { p += s; }
 }
 
 // allow for other angles of rotation (esp. for core)
@@ -1165,10 +1161,30 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 		p.y = t.at<double>(1, 0) * temp_x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
 	}
 
-	// rotate core, assuming rotationCenter is center of piece
+	// rotate core and midpoints, assuming rotationCenter is center of piece
+	// note: if theta = 180, core and midpoints stay the same
 	if(theta == 90 || theta == 270) {
 		core = Rect(core.tl().x + core.width/2 - core.height/2, core.tl().y + core.height/2 - core.width/2, core.height, core.width);
-	} // else core stays the same
+		midpoints[0] = core.tl() + Point(core.width/2, 0);
+		midpoints[1] = core.tl() + Point(core.width, core.height/2);
+		midpoints[2] = core.tl() + Point(core.width/2, core.height);
+		midpoints[3] = core.tl() + Point(0, core.height/2);
+	} else if(theta < 90) {
+		for(Point &p: midpoints) {
+			double temp_x = p.x;
+			p.x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
+			p.y = t.at<double>(1, 0) * temp_x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
+		}
+
+		// rotate the shift corrections
+		Mat t_zero = getRotationMatrix2D(Point(0, 0), theta, 1);
+		Point sl = correctionShiftLeft;
+		correctionShiftLeft.x = t_zero.at<double>(0, 0) * sl.x + t_zero.at<double>(0, 1) * sl.y + t_zero.at<double>(0, 2);
+		correctionShiftLeft.y = t_zero.at<double>(1, 0) * sl.x + t_zero.at<double>(1, 1) * sl.y + t_zero.at<double>(1, 2);
+		Point su = correctionShiftUp;
+		correctionShiftUp.x = t_zero.at<double>(0, 0) * su.x + t_zero.at<double>(0, 1) * su.y + t_zero.at<double>(0, 2);
+		correctionShiftUp.y = t_zero.at<double>(1, 0) * su.x + t_zero.at<double>(1, 1) * su.y + t_zero.at<double>(1, 2);
+	}
 }
 
 Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
@@ -1316,39 +1332,24 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
 
 			PuzzlePiece *cursor = completedPuzzle[row][col];
-			PuzzlePiece *leftNeighbor;
-			PuzzlePiece *upNeighbor;
+			PuzzlePiece *leftNeighbor = nullptr;
+			PuzzlePiece *upNeighbor = nullptr;
 
-			// detemine rotation and shift corrections
-			Point2f shift; // about converting int to double if I just do Point
+			// rotation corrections
 			double correctionTheta = 0;
 
 			if(row == 0 && col == 0) {  // top left corner
-				shift = -(cursor->core.tl());
 				correctionTheta = 0;  // todo: correct rotation of the whole puzzle at the end
 			}  else if(col == 0) {  // left edge
-				PuzzlePiece *upNeighbor = completedPuzzle[row-1][col];
-				Point upNeighborPoint = upNeighbor->core.br() + Point(-upNeighbor->core.width / 2);
-				Point upPoint = cursor->core.tl() + Point(cursor->core.width / 2, 0);
-				shift = upNeighborPoint - upPoint + cursor->correctionShiftUp;
-				correctionTheta = cursor->correctionTheta - upNeighbor->actualAdditionalRotation;
+				upNeighbor = completedPuzzle[row-1][col];
+				correctionTheta = cursor->correctionTheta - upNeighbor->finalRotationCorrection;
 			} else if(row == 0) {  // top edge
-				PuzzlePiece *leftNeighbor = completedPuzzle[row][col-1];
-				Point leftNeighborPoint = leftNeighbor->core.br() + Point(0, -leftNeighbor->core.height / 2);
-				Point leftPoint = cursor->core.tl() + Point(0, cursor->core.height/2);
-				shift = leftNeighborPoint - leftPoint + cursor->correctionShiftLeft;
-				correctionTheta = cursor->correctionTheta - leftNeighbor->actualAdditionalRotation;
+				leftNeighbor = completedPuzzle[row][col-1];
+				correctionTheta = cursor->correctionTheta - leftNeighbor->finalRotationCorrection;
 			} else {  // most pieces
-				PuzzlePiece *upNeighbor = completedPuzzle[row-1][col];
-				Point upNeighborPoint = upNeighbor->core.br() + Point(-upNeighbor->core.width / 2);
-				Point upPoint = cursor->core.tl() + Point(cursor->core.width / 2, 0);
-				Point shiftUp = upNeighborPoint - upPoint + cursor->correctionShiftLeft;
-				PuzzlePiece *leftNeighbor = completedPuzzle[row][col-1];
-				Point leftNeighborPoint = leftNeighbor->core.br() + Point(0, -leftNeighbor->core.height / 2);
-				Point leftPoint = cursor->core.tl() + Point(0, cursor->core.height/2);
-				Point shiftLeft = leftNeighborPoint - leftPoint + cursor->correctionShiftUp;
-				shift = (shiftUp + shiftLeft) / 2;
-				correctionTheta = (cursor->correctionThetaLeft - leftNeighbor->actualAdditionalRotation + cursor->correctionThetaUp - upNeighbor->actualAdditionalRotation) / 2;
+				upNeighbor = completedPuzzle[row-1][col];
+				leftNeighbor = completedPuzzle[row][col-1];
+				correctionTheta = (cursor->correctionThetaLeft - leftNeighbor->finalRotationCorrection + cursor->correctionThetaUp - upNeighbor->finalRotationCorrection) / 2;
 			}
 
 			// rotate about the center of the piece
@@ -1356,7 +1357,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			Point rotationCenter = Point(cursor->core.tl().x + cursor->core.width/2, cursor->core.tl().y + cursor->core.height/2);
 			cursor->rotate(rotationCenter, cursor->rotationAngle());  // only 90 and 270 cause core to rotate
 			cursor->rotate(rotationCenter, correctionTheta);
-			cursor->actualAdditionalRotation = correctionTheta;
+			cursor->finalRotationCorrection = correctionTheta;
 			if(verbose) {
 				cout << "after just rotation:" << endl;
 				imshow("temp", cursor->img);
@@ -1388,10 +1389,38 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			}
 			*/
 
-			// now translate
 			// should do in one step; I'm counting on no clipping after the rotation
 			// note: could do this check implicitly by waiting until this while loop exits to the other one
 
+			// calculate translation
+			// note: rotate before calculating the shift bc depends on the location of core midpoints
+			// upNeighbor and leftNeighbor are already calculated during rotation
+			Point2f shift; // about converting int to double if I just do Point
+
+			if(row == 0 && col == 0) {  // top left corner
+				shift = -(cursor->core.tl());
+			}  else if(col == 0) {  // left edge
+				shift = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
+			} else if(row == 0) {  // top edge
+				shift = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
+			} else {  // most pieces
+				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
+				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
+				shift = (shiftUp + shiftLeft) / 2;
+			}
+
+			if(upNeighbor != nullptr) {
+				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;
+			}
+			if(leftNeighbor != nullptr) {
+				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1] << endl;
+			}
+			cout << "cursor up midpoint: " << cursor->midpoints[0] << endl;
+			cout << "cursor left midpoint: " << cursor->midpoints[3] << endl;
+			cout << "correction up: " << cursor->correctionShiftUp << endl;
+			cout << "correction left: " << cursor->correctionShiftLeft << endl;
+
+			// translate
 			cursor->shift(shift, completedPuzzleImg.size());  // this makes cursor->img permanently much bigger, taking up a lot of RAM...
 			if(verbose) {
 				cout << "show completed transformation" << endl;
