@@ -131,8 +131,9 @@ int main() {
 
 	/*
 	// test a specific edge
-	cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[0], true).score << endl;
-	cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[1], true).score << endl;
+	// cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[0], true).score << endl;
+	// cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[1], true).score << endl;
+	cout << Puzzle::matchEdges(pieces[3].edges[2], pieces[0].edges[2], true).score << endl;
 	exit(0);
 	*/
 
@@ -910,6 +911,8 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	}
 
 	if(verbose) {
+		cout << "best theta: " << bestTheta << endl;
+
 		Mat bothEdges = Mat::zeros(best_e1.size(), CV_8UC3);
 		Mat channels[3] = {best_e1, Mat::zeros(best_e1.size(), CV_8UC1), best_e2};
 		merge(channels, 3, bothEdges);
@@ -923,7 +926,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	PieceMatch bestMatch;
 	bestMatch.score = minScore;
 	bestMatch.theta = bestTheta;
-	cout << "theta of best score: " << bestTheta << endl;
+	// cout << "theta of best score: " << bestTheta << endl;
 	bestMatch.shift = bestShift;
 	return bestMatch;
 
@@ -996,12 +999,14 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 
 			if(firstMatch) {
 				bestMatchScore = currentMatch.score;
+				bestMatch = currentMatch;
 				bestMatch.piece = &pieces[i];
 				bestMatch.edgeIndex = j;
 				firstMatch = false;
 			}
 			else if(currentMatch.score < bestMatchScore) { // low score is best
 				bestMatchScore = currentMatch.score;
+				bestMatch = currentMatch;
 				bestMatch.piece = &pieces[i];
 				bestMatch.edgeIndex = j;
 			}
