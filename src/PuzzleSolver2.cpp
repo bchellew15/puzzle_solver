@@ -42,7 +42,7 @@ int main() {
 	int numPieces = stoi(numPiecesStr);
 	*/
 
-	bool process_verbose = false;
+	bool process_verbose = true;
 	bool match_verbose = false;
 
 	int numPieces = 16;
@@ -51,7 +51,7 @@ int main() {
 	// load images
 	// todo: check if the file loaded properly
 	Mat images[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_green/Piece";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_darkgreen/Piece";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -133,14 +133,12 @@ int main() {
 	// I don't understand these time functions at all
 	cout << "Runtime (ms): " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
-	/*
 	// test a specific edge
 	Puzzle::matchEdges(pieces[1].edges[0], pieces[2].edges[0], true);
-	Puzzle::matchEdges(pieces[1].edges[0], pieces[2].edges[2], true);
+	Puzzle::matchEdges(pieces[1].edges[0], pieces[5].edges[0], true);
 	Puzzle::matchEdges(pieces[1].edges[0], pieces[8].edges[0], true);
 	Puzzle::matchEdges(pieces[1].edges[0], pieces[11].edges[3], true);
-	exit(0);
-	*/
+	// exit(0);
 
 	// edge test results:
 	// avg dist between 2 and 4 pixels for edges.
@@ -259,9 +257,9 @@ void PuzzlePiece::process(bool verbose) {
 
 	// for light green background: (0.5, 1.5, 1.5)
 	// for white background: (1, 5, 5) is ok not great
-	double hueBuffer = 0.5;  // fraction of color range that is added to each end
-	double satBuffer = 1.5;
-	double valueBuffer = 1.5;
+	double hueBuffer = 2;  // fraction denominator of color range that is added to each end
+	double satBuffer = 2;
+	double valueBuffer = 2;
 	// Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/colorRangeBuffer), max(0.0, s_channel_min - s_channel_width/colorRangeBuffer), max(0.0, v_channel_min - v_channel_width/colorRangeBuffer));
 	// Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/colorRangeBuffer), min(255.0, s_channel_max + s_channel_width/colorRangeBuffer), min(255.0, v_channel_max + v_channel_width/colorRangeBuffer));
 	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/hueBuffer), max(0.0, s_channel_min - s_channel_width/satBuffer), max(0.0, v_channel_min - v_channel_width/valueBuffer));
@@ -279,8 +277,8 @@ void PuzzlePiece::process(bool verbose) {
 		imshow("grey", color_mask);
 		waitKey(0);
 	}
-	Mat close_kernel = getStructuringElement(MORPH_ELLIPSE, Size(10, 10));
-	filter2D(color_mask, color_mask, -1, close_kernel);
+	Mat close_kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	morphologyEx(color_mask, color_mask, MORPH_CLOSE, close_kernel);
 	if(verbose) {
 		imshow("grey", color_mask);
 		waitKey(0);
@@ -342,13 +340,11 @@ void PuzzlePiece::process(bool verbose) {
 	// check which one is the circle
 	double outlineArea = contourArea(outline);
 	double coinArea = contourArea(coin);
-	Point2f coinCenter;
-	Point2f outlineCenter;
-	float outlineRadius;  // making this type double didn't work
-	float coinRadius;
 	double pi = atan(1)*4;
-	minEnclosingCircle(outline, outlineCenter, outlineRadius);
-	minEnclosingCircle(coin, coinCenter, coinRadius);
+	Rect outlineBound = boundingRect(outline);
+	Rect coinBound = boundingRect(coin);
+	double outlineRadius = max(outlineBound.width, outlineBound.height) / 2;
+	double coinRadius = max(coinBound.width, coinBound.height) / 2;
 	double coinCircleArea = pi * pow(coinRadius, 2);
 	double outlineCircleArea = pi * pow(outlineRadius, 2);
 	// swap outline and circle if needed
@@ -363,6 +359,7 @@ void PuzzlePiece::process(bool verbose) {
 	if(scalingLength == 0) {
 		scalingLength = coinRadius;
 	}
+	cout << "debug: diameter: " << 2*coinRadius << endl;
 	double normalize_factor = scalingLength / coinRadius;
 	cout << "Piece " << number << " scaling by " << normalize_factor << endl;
 	for(Point &p: outline) {
@@ -712,6 +709,7 @@ void PuzzlePiece::process(bool verbose) {
 	// create raster images of the edges
 	int dotRadius = 10;  // 10 looked visually good
 	for(int i = 0; i < 4; i++) {
+		if(edges[i].isEdgeVar) continue;
 		Rect edgeBound = boundingRect(edges[i].edge);
 		Mat edgeImg = Mat::zeros(edgeBound.height + 2*dotRadius, edgeBound.width + 2*dotRadius, CV_8UC1);
 		edges[i].rasterShift = - Point(edgeBound.x, edgeBound.y) + Point(dotRadius, dotRadius);
@@ -748,8 +746,10 @@ void PuzzlePiece::process(bool verbose) {
 			imshow("grey", img_copy);
 			waitKey(0);
 
-			imshow("grey", edges[0].edgeImg);
-			waitKey(0);
+			if(!edges[0].isEdgeVar) {
+				imshow("grey", edges[0].edgeImg);
+				waitKey(0);
+			}
 		}
 
 	if(verbose) {
@@ -1252,6 +1252,7 @@ void Puzzle::assemble(bool verbose) {
 			PieceMatch matchingPiece = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
 			if(matchingPiece.piece == nullptr) {
 				cout << "ERROR: no match found" << endl;
+				return;
 			}
 			cursor=matchingPiece.piece;
 			completedPuzzle[i].push_back(cursor);
@@ -1262,7 +1263,6 @@ void Puzzle::assemble(bool verbose) {
 		}
 	}
 	// todo: check for edges in the middle of the puzzle
-	// todo: choose matches based on pieces above AND left
 
 	cout << "Puzzle completed!" << endl;
 
