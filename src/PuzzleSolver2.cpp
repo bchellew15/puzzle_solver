@@ -57,12 +57,6 @@ int main() {
 		images[i] = imread(filename);
 	}
 
-	// try displaying a piece
-	namedWindow("temp");
-	imshow("temp", images[0]);
-	waitKey(0);
-	destroyWindow("temp");
-
 	// test: process one piece
 	// PuzzlePiece p1 = PuzzlePiece(images[5], 5, true);
 	// PuzzlePiece p2 = PuzzlePiece(images[14], 5, true);
@@ -139,9 +133,6 @@ int main() {
 	// test a specific edge
 	cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[0], true).score << endl;
 	cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[1], true).score << endl;
-
-	cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[2], true).score << endl;
-	cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[3], true).score << endl;
 	exit(0);
 	*/
 
@@ -853,7 +844,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
 
-	for(int theta = -6; theta <= 6; theta+=3) {
+	for(int theta = -6; theta <= 6; theta+=2) {
 
 		Mat rotEdgeImg;
 		Point rotationCenter = Point(firstEdge.edgeImg.cols/2, firstEdge.edgeImg.rows/2);
@@ -932,6 +923,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	PieceMatch bestMatch;
 	bestMatch.score = minScore;
 	bestMatch.theta = bestTheta;
+	cout << "theta of best score: " << bestTheta << endl;
 	bestMatch.shift = bestShift;
 	return bestMatch;
 
@@ -1342,14 +1334,14 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				correctionTheta = 0;  // todo: correct rotation of the whole puzzle at the end
 			}  else if(col == 0) {  // left edge
 				upNeighbor = completedPuzzle[row-1][col];
-				correctionTheta = cursor->correctionTheta - upNeighbor->finalRotationCorrection;
+				correctionTheta = cursor->correctionThetaUp + upNeighbor->finalRotationCorrection;
 			} else if(row == 0) {  // top edge
 				leftNeighbor = completedPuzzle[row][col-1];
-				correctionTheta = cursor->correctionTheta - leftNeighbor->finalRotationCorrection;
+				correctionTheta = cursor->correctionThetaLeft + leftNeighbor->finalRotationCorrection;
 			} else {  // most pieces
 				upNeighbor = completedPuzzle[row-1][col];
 				leftNeighbor = completedPuzzle[row][col-1];
-				correctionTheta = (cursor->correctionThetaLeft - leftNeighbor->finalRotationCorrection + cursor->correctionThetaUp - upNeighbor->finalRotationCorrection) / 2;
+				correctionTheta = (cursor->correctionThetaLeft + leftNeighbor->finalRotationCorrection + cursor->correctionThetaUp + upNeighbor->finalRotationCorrection) / 2;
 			}
 
 			// rotate about the center of the piece
@@ -1363,6 +1355,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				imshow("temp", cursor->img);
 				waitKey(0);
 			}
+			cout << "correction angle: " << correctionTheta << endl;
 
 			/*
 			// scale the piece based on up and left neighbors
@@ -1415,8 +1408,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			if(leftNeighbor != nullptr) {
 				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1] << endl;
 			}
-			cout << "cursor up midpoint: " << cursor->midpoints[0] << endl;
-			cout << "cursor left midpoint: " << cursor->midpoints[3] << endl;
+
 			cout << "correction up: " << cursor->correctionShiftUp << endl;
 			cout << "correction left: " << cursor->correctionShiftLeft << endl;
 
