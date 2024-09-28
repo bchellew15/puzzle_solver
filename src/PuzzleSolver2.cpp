@@ -133,7 +133,9 @@ int main() {
 	// test a specific edge
 	// cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[0], true).score << endl;
 	// cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[1], true).score << endl;
-	cout << Puzzle::matchEdges(pieces[3].edges[2], pieces[0].edges[2], true).score << endl;
+	// cout << Puzzle::matchEdges(pieces[3].edges[2], pieces[0].edges[2], true).score << endl;
+	cout << Puzzle::matchEdges(pieces[3].edges[1], pieces[4].edges[2], true).score << endl;
+	cout << Puzzle::matchEdges(pieces[0].edges[3], pieces[13].edges[3], true).score << endl;
 	exit(0);
 	*/
 
@@ -163,6 +165,7 @@ int main() {
 	return 0;
 }
 
+int EdgeOfPiece::edgeImgBuffer = 10;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
 
@@ -707,15 +710,14 @@ void PuzzlePiece::process(bool verbose) {
 	}
 
 	// create raster images of the edges
-	int dotRadius = 10;  // 10 looked visually good
 	for(int i = 0; i < 4; i++) {
 		if(edges[i].isEdgeVar) continue;
 		Rect edgeBound = boundingRect(edges[i].edge);
-		Mat edgeImg = Mat::zeros(edgeBound.height + 2*dotRadius, edgeBound.width + 2*dotRadius, CV_8UC1);
-		edges[i].rasterShift = - Point(edgeBound.x, edgeBound.y) + Point(dotRadius, dotRadius);
+		Mat edgeImg = Mat::zeros(edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer, edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer, CV_8UC1);
+		edges[i].rasterShift = - Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer);
 		for(Point p: edges[i].edge) {
 			Point circleLoc = p + edges[i].rasterShift;
-			circle(edgeImg, circleLoc, dotRadius, 255, -1);
+			circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer, 255, -1);
 		}
 		edges[i].edgeImg = edgeImg;  // same name causes any problems?
 
@@ -805,25 +807,6 @@ int PuzzlePiece::downIndex() {
 	return nextIndex(rightIndex);
 }
 
-Point Puzzle::calculateShift(Mat e1, Mat e2, int e1_row_max, int e2_row_max, int e1_col_min, int e2_col_min, int minWidth) {
-
-	Point shift;
-
-	if(e1.rows <= e2.rows) {
-		shift.y = -(e2.rows - e2_row_max);
-	} else {
-		shift.y = e1.rows - e1_row_max;
-	}
-
-	if(e1.cols <= e2.cols) {
-		shift.x = e2.cols/2 - (e2_col_min + minWidth/2);
-	} else {
-		shift.x = (e1_col_min + minWidth/2) - e1.cols/2;
-	}
-
-	return shift;
-}
-
 // close to 0 is a good match
 // "bestShift" is amount 2nd edge needed to be shifted
 PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose) {
@@ -845,7 +828,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
 
-	for(int theta = -6; theta <= 6; theta+=2) {
+	for(int theta = -4; theta <= 4; theta+=2) {
 
 		Mat rotEdgeImg;
 		Point rotationCenter = Point(firstEdge.edgeImg.cols/2, firstEdge.edgeImg.rows/2);
@@ -896,15 +879,18 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 					firstScore = false;
 					minScore = score;
 					bestTheta = theta;
-					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min, minWidth) + firstEdge.rasterShift - other.rasterShift;
+					// first flip the raster shift across center row bc working with flipped img
+					bestShift = Point(other.rasterShift.x, rotEdgeImg.rows - other.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - firstEdge.rasterShift;
 					best_e1 = e1;  // for display
 					best_e2 = e2;
+					// cout << "first final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
 				} else if(score < minScore) {
 					minScore = score;
 					bestTheta = theta;
-					bestShift = Puzzle::calculateShift(e1, e2, e1_row_max, e2_row_max, e1_col_min, e2_col_min, minWidth) + firstEdge.rasterShift - other.rasterShift;
+					bestShift = Point(other.rasterShift.x, rotEdgeImg.rows - other.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - firstEdge.rasterShift;
 					best_e1 = e1;  // for display
 					best_e2 = e2;
+					// cout << "new final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
 				}
 			}
 		}
@@ -922,6 +908,11 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 		waitKey(0);
 		destroyWindow("edgeMatch");
 	}
+
+	// cout << "best shift: " << bestShift << endl;
+	// cout << "undo flip: " << Point(0, other.edgeImg.rows - 2 * EdgeOfPiece::edgeImgBuffer) << endl;
+	// cout << "piece 2 raster shift: " << - other.rasterShift << endl;
+	// cout << "piece 1 raster shift: " << firstEdge.rasterShift << endl;
 
 	PieceMatch bestMatch;
 	bestMatch.score = minScore;
@@ -1074,7 +1065,6 @@ PieceMatch Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePie
 
 	// average corrections from up piece and left piece
 	// rotate the correction from upMatch
-	bestMatchUp.shift = Point(bestMatchUp.shift.y, -bestMatchUp.shift.x);  // counter clockwise
 	bestMatchLeft.shiftLeft = bestMatchLeft.shift;
 	bestMatchLeft.shiftUp = bestMatchUp.shift;
 	bestMatchLeft.thetaLeft = bestMatchLeft.theta;
@@ -1267,7 +1257,7 @@ void Puzzle::assemble(bool verbose) {
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::nextIndex(matchingPiece.edgeIndex);
-		cursor->correctionShiftUp = -matchingPiece.shift;  // 180deg rotation (bc compare upside down)
+		cursor->correctionShiftUp = -matchingPiece.shift; // 180 degree rotation
 		cursor->correctionThetaUp = matchingPiece.theta;
 	}
 
@@ -1285,8 +1275,8 @@ void Puzzle::assemble(bool verbose) {
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
 			cursor->rightIndex = matchingPiece.edgeIndex;
-			// todo: calculate this correction based on upper AND left pieces
-			cursor->correctionShift = Point(-matchingPiece.shift.y, matchingPiece.shift.x);  // rotate clockwise 90deg
+			cursor->correctionShiftLeft = Point(-matchingPiece.shiftLeft.y, matchingPiece.shiftLeft.x);  // // rotate clockwise 90deg
+			cursor->correctionShiftUp = -matchingPiece.shiftUp; // 180 degree rotation
 			cursor->correctionThetaLeft = matchingPiece.thetaLeft;
 			cursor->correctionThetaUp = matchingPiece.thetaUp;
 		}
