@@ -21,7 +21,6 @@ public:
 	int shiftCorrection; // for flat edges
 
 	bool isEdge();
-	void rotate_edge(vector<Point> unrotated, double theta);
 };
 
 class PuzzlePiece {
@@ -40,10 +39,8 @@ public:
 	bool isConnected = false; // whether this piece has been connected to the puzzle
 	static double scalingLength;
 	static double avgBrightness;
-	Point correctionShift;  // remove this
 	Point correctionShiftLeft;
 	Point correctionShiftUp;
-	double correctionTheta;  // remove this
 	double correctionThetaLeft;
 	double correctionThetaUp;
 	double finalRotationCorrection;
