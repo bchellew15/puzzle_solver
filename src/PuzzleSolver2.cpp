@@ -118,7 +118,10 @@ int main() {
 
 	// create a Puzzle
 	Puzzle myPuzzle = Puzzle(numPieces, pieces);
+	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
 	myPuzzle.process(process_verbose);
+	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
+	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
 	/*
 	// time edge comparison
@@ -156,7 +159,10 @@ int main() {
 	*/
 
 	// assemble
+	start_time = chrono::steady_clock::now();
 	myPuzzle.assemble(match_verbose);
+	end_time = chrono::steady_clock::now();
+	cout << "Assembly time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 	cout<<"Assembled" << endl;
 
 	myPuzzle.print();
@@ -729,14 +735,17 @@ void PuzzlePiece::process(bool verbose) {
 		}
 		edges[i].edgeImg = edgeImg;  // same name causes any problems?
 
-		// rotated image (there must be a faster way)
-		Mat rotatedEdgeImg = Mat::zeros(edgeImg.size(), edgeImg.type());
-		for(int row = 0; row < edgeImg.rows; row++) {
-			for(int col = 0; col < edgeImg.cols; col++) {
-				rotatedEdgeImg.at<uchar>(row, col) = edgeImg.at<uchar>(edgeImg.rows-row-1, edgeImg.cols-col-1);
-			}
+		// rotated edges
+		for(int theta = -4; theta <= 4; theta +=2) {
+			edges[i].rotEdgeImgDegrees.push_back(theta);
 		}
-		edges[i].edgeImg180 = rotatedEdgeImg;
+		Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+		for(double d: edges[i].rotEdgeImgDegrees) {
+			Mat rotatedEdgeImg;
+			Mat rot_t = getRotationMatrix2D(rotationCenter, d+180, 1);
+			warpAffine(edgeImg, rotatedEdgeImg, rot_t, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
+			edges[i].rotEdgeImgs.push_back(rotatedEdgeImg);
+		}
 	}
 
 	if(verbose) {
@@ -844,12 +853,10 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
 
-	for(int theta = -4; theta <= 4; theta+=2) {
+	for(int i = 0; i < other.rotEdgeImgDegrees.size(); i++) {
 
-		Mat rotEdgeImg;
-		Point rotationCenter = Point(firstEdge.edgeImg.cols/2, firstEdge.edgeImg.rows/2);
-		Mat rot_t = getRotationMatrix2D(rotationCenter, theta, 1);
-		warpAffine(other.edgeImg180, rotEdgeImg, rot_t, other.edgeImg180.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
+		double theta = other.rotEdgeImgDegrees[i];
+		Mat rotEdgeImg = other.rotEdgeImgs[i];
 
 		for(int h = 0; h < h_intervals + 1; h++) {
 			for(int w = 0; w < w_intervals + 1; w++) {
@@ -1355,6 +1362,8 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			PuzzlePiece *leftNeighbor = nullptr;
 			PuzzlePiece *upNeighbor = nullptr;
 
+			cout << "Piece " << cursor->number << endl;
+
 			// rotation corrections
 			double correctionTheta = 0;
 
@@ -1381,11 +1390,12 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			cursor->rotate(rotationCenter, correctionTheta);
 			cursor->finalRotationCorrection = correctionTheta;
 			if(verbose) {
+				cout << "correction angle: " << correctionTheta << endl;
 				cout << "after just rotation:" << endl;
 				imshow("temp", cursor->img);
 				waitKey(0);
 			}
-			cout << "correction angle: " << correctionTheta << endl;
+
 
 			/*
 			// scale the piece based on up and left neighbors
@@ -1429,12 +1439,15 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			} else if(row == 0) {  // top edge
 				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
 				int shiftY = - cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
+				cout << "debug: y shift correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
 				shift = Point(shiftX, shiftY);
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
+
+
 
 //			if(upNeighbor != nullptr) {
 //				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;
@@ -1448,6 +1461,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			// translate
 			cursor->shift(shift, completedPuzzleImg.size());  // this makes cursor->img permanently much bigger, taking up a lot of RAM...
 			if(verbose) {
+				cout << "shift: " << shift << endl;
 				cout << "show completed transformation" << endl;
 				imshow("temp", cursor->img);
 				waitKey(0);
