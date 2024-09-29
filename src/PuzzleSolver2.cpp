@@ -174,6 +174,7 @@ int main() {
 int EdgeOfPiece::edgeImgBuffer = 10;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
+double PuzzlePiece::edgeShrinkFactor = 10;
 
 // return true if the edge is flat.
 // also calculate rotation and vertical shift required to line up the edge with border of puzzle
@@ -727,11 +728,11 @@ void PuzzlePiece::process(bool verbose) {
 	for(int i = 0; i < 4; i++) {
 		if(edges[i].isEdgeVar) continue;
 		Rect edgeBound = boundingRect(edges[i].edge);
-		Mat edgeImg = Mat::zeros(edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer, edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer, CV_8UC1);
-		edges[i].rasterShift = - Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer);
+		Mat edgeImg = Mat::zeros((edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer) / PuzzlePiece::edgeShrinkFactor, (edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer) / PuzzlePiece::edgeShrinkFactor, CV_8UC1);
+		edges[i].rasterShift = (- Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer)) / PuzzlePiece::edgeShrinkFactor;
 		for(Point p: edges[i].edge) {
-			Point circleLoc = p + edges[i].rasterShift;
-			circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer, 255, -1);
+			Point circleLoc = p / PuzzlePiece::edgeShrinkFactor + edges[i].rasterShift;
+			circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer / PuzzlePiece::edgeShrinkFactor, 255, -1);
 		}
 		edges[i].edgeImg = edgeImg;  // same name causes any problems?
 
@@ -836,7 +837,7 @@ int PuzzlePiece::leftIndex() {
 // "bestShift" is amount 2nd edge needed to be shifted
 PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose) {
 
-	int pixelShift = 5;
+	int pixelShift = 5 / PuzzlePiece::edgeShrinkFactor;
 
 	int minHeight = min(firstEdge.edgeImg.rows, other.edgeImg.rows);
 	int maxHeight = max(firstEdge.edgeImg.rows, other.edgeImg.rows);
@@ -941,7 +942,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	bestMatch.score = minScore;
 	bestMatch.theta = bestTheta;
 	// cout << "theta of best score: " << bestTheta << endl;
-	bestMatch.shift = bestShift;
+	bestMatch.shift = bestShift * PuzzlePiece::edgeShrinkFactor;
 	return bestMatch;
 
 	// ISSUE: these print blanks
@@ -1439,15 +1440,13 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			} else if(row == 0) {  // top edge
 				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
 				int shiftY = - cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
-				cout << "debug: y shift correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
+				// cout << "debug: y shift correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
 				shift = Point(shiftX, shiftY);
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
-
-
 
 //			if(upNeighbor != nullptr) {
 //				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;

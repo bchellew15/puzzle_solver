@@ -47,6 +47,7 @@ public:
 	double correctionThetaLeft;
 	double correctionThetaUp;
 	double finalRotationCorrection;
+	static double edgeShrinkFactor; // shrink edges for faster processing
 
 	void process(bool verbose=false); // process the image and get edge shapes
 	bool isCorner();
