@@ -12,7 +12,8 @@ class EdgeOfPiece {
 public:
 	vector<Point> edge;
 	Mat edgeImg;
-	Mat edgeImg180;
+	vector<Mat> rotEdgeImgs;
+	vector<double> rotEdgeImgDegrees;
 	static int edgeImgBuffer;  // 10 looked visually good
 	Point rasterShift;  // amount edge center is shifted when made into raster image
 	bool isEdgeVar = false;
