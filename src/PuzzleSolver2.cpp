@@ -1,9 +1,8 @@
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <iomanip> //for setw(n)
+#include <iomanip> // for setw(n)
 #include <cmath>
-#include <chrono> // for timer
+#include <chrono>
 using namespace std;
 
 #include <opencv2/opencv.hpp>
@@ -12,161 +11,46 @@ using namespace cv;
 
 #include "PuzzleSolver2.h"
 
-//matching piece: will it help to return pointer as a reference param?
-//passing an array as a call-by reference?
-//match isn't returning correctly
-
-//takes numbered images of puzzle pieces and prints out a grid showing where the pieces should go
-//pieces are labeled edge, corner, or middle
-
-//make more functions to break it up
-//protect against errors
-//check for small puzzle sizes
-//how is it accessing edges? that's private.
-//passing arrays of pointers?
-//range-based for loop is c++ 11 only?
-//a lot of the functions should not be part of any class.
-//protect against infinite loops
-
-// MISC:
-// match() function should also return the index of the matching edge (finds it anyway and then I have to call matchingEdge after)
-//    (but can you return a tuple in C++?)
-
 int main() {
-
-	// get number of pieces.
-	/*
-	string numPiecesStr;
-	cout << "How many pieces?" << endl;
-	cin >> numPiecesStr;
-	int numPieces = stoi(numPiecesStr);
-	*/
 
 	bool process_verbose = false;
 	bool match_verbose = false;
+	bool display_verbose = false;
 
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
-	// todo: check if the file loaded properly
 	Mat images[numPieces];
+	PuzzlePiece pieces[numPieces];
 	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_darkgreen/Piece";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
+		pieces[i] = PuzzlePiece(images[i], i);
 	}
-
-	// test: process one piece
-	// PuzzlePiece p1 = PuzzlePiece(images[5], 5, true);
-	// PuzzlePiece p2 = PuzzlePiece(images[14], 5, true);
-
-	// todo: if the piece construction fails, stop the program
-	PuzzlePiece pieces[numPieces];
-	for(int i = 0; i < numPieces; i++) {
-		pieces[i] = PuzzlePiece(images[i], i); // last argument is "verbose"
-	}
-
-	/*
-	// test: create a fake puzzle for display
-	Puzzle testPuzzle = Puzzle(numPieces, pieces);
-	testPuzzle.rows = 4;
-	testPuzzle.columns = 4;
-	testPuzzle.process();
-
-	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
-	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
-	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
-	testPuzzle.completedPuzzle.push_back(vector<PuzzlePiece*>(4));
-	testPuzzle.completedPuzzle[0][0] = &pieces[3];
-	testPuzzle.completedPuzzle[0][1] = &pieces[4];
-	testPuzzle.completedPuzzle[0][2] = &pieces[6];
-	testPuzzle.completedPuzzle[0][3] = &pieces[7];
-	testPuzzle.completedPuzzle[1][0] = &pieces[0];
-	testPuzzle.completedPuzzle[1][1] = &pieces[13];
-	testPuzzle.completedPuzzle[1][2] = &pieces[5];
-	testPuzzle.completedPuzzle[1][3] = &pieces[14];
-	testPuzzle.completedPuzzle[2][0] = &pieces[1];
-	testPuzzle.completedPuzzle[2][1] = &pieces[11];
-	testPuzzle.completedPuzzle[2][2] = &pieces[15];
-	testPuzzle.completedPuzzle[2][3] = &pieces[12];
-	testPuzzle.completedPuzzle[3][0] = &pieces[8];
-	testPuzzle.completedPuzzle[3][1] = &pieces[9];
-	testPuzzle.completedPuzzle[3][2] = &pieces[2];
-	testPuzzle.completedPuzzle[3][3] = &pieces[10];
-
-	pieces[3].rightIndex = 1;
-	pieces[4].rightIndex = 0;
-	pieces[6].rightIndex = 0;
-	pieces[7].rightIndex = 0;
-	pieces[0].rightIndex = 3;
-	pieces[13].rightIndex = 1;
-	pieces[5].rightIndex = 0;
-	pieces[14].rightIndex = 1;
-	pieces[1].rightIndex = 3;
-	pieces[11].rightIndex = 2;
-	pieces[15].rightIndex = 1;
-	pieces[12].rightIndex = 3;
-	pieces[8].rightIndex = 1;
-	pieces[9].rightIndex = 3;
-	pieces[2].rightIndex = 2;
-	pieces[10].rightIndex = 0;
-
-	testPuzzle.display(true);
-	exit(0);
-	*/
 
 	// create a Puzzle
 	Puzzle myPuzzle = Puzzle(numPieces, pieces);
+
 	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
 	myPuzzle.process(process_verbose);
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
-
-	/*
-	// time edge comparison
-	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
-	Puzzle::matchEdges(pieces[0].edges[0], pieces[1].edges[0]);
-	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
-	// I don't understand these time functions at all
-	cout << "Runtime (ms): " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
-	*/
-
-	/*
-	// test a specific edge
-	// cout << Puzzle::matchEdges(pieces[1].edges[3], pieces[11].edges[0], true).score << endl;
-	// cout << Puzzle::matchEdges(pieces[13].edges[2], pieces[11].edges[1], true).score << endl;
-	// cout << Puzzle::matchEdges(pieces[3].edges[2], pieces[0].edges[2], true).score << endl;
-	cout << Puzzle::matchEdges(pieces[3].edges[1], pieces[4].edges[2], true).score << endl;
-	cout << Puzzle::matchEdges(pieces[0].edges[3], pieces[13].edges[3], true).score << endl;
-	exit(0);
-	*/
-
-	// edge test results:
-	// avg dist between 2 and 4 pixels for edges.
-	// avg dist > 100 for non-edges
-
-	// test edge detection and counting
-	/*
-	for(int i = 0; i < numPieces; i++) {
-		cout << "Piece " << i << endl;
-		for(int j = 0; j < 4; j++) {
-			cout << "Edge " << j+1 << ": " << pieces[i].edges[j].isEdgeVar << endl;
-		}
-		cout << "Number of edges: " << pieces[i].countEdges() << endl;
-		cout << "Is corner? " << pieces[i].isCorner() << endl;
-	}
-	*/
 
 	// assemble
 	start_time = chrono::steady_clock::now();
 	myPuzzle.assemble(match_verbose);
 	end_time = chrono::steady_clock::now();
 	cout << "Assembly time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
-	cout<<"Assembled" << endl;
+	cout <<"Assembled" << endl;
 
+	// display
 	myPuzzle.print();
-	myPuzzle.display(true);
+	start_time = chrono::steady_clock::now();
+	myPuzzle.display(display_verbose);
+	end_time = chrono::steady_clock::now();
+	cout << "Display time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
 	return 0;
 }
@@ -174,15 +58,14 @@ int main() {
 int EdgeOfPiece::edgeImgBuffer = 10;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
-double PuzzlePiece::edgeShrinkFactor = 10;
+double PuzzlePiece::edgeShrinkFactor = 5;
 
 // return true if the edge is flat.
 // also calculate rotation and vertical shift required to line up the edge with border of puzzle
 bool EdgeOfPiece::isEdge() {
-	vector<double> fittedLine; // not clear if this is the right type
+	vector<double> fittedLine;
 	fitLine(edge, fittedLine, DIST_L2, 0.0, .01, .01);
 
-	// can I do this in one line
 	double vx = fittedLine[0];
 	double vy = fittedLine[1];
 	double x0 = fittedLine[2];
@@ -194,35 +77,27 @@ bool EdgeOfPiece::isEdge() {
 	double totalDist = 0;
 	double denom = sqrt(pow(a, 2) + pow(b, 2));
 	for(Point p: edge) {
-		// does += or / have precedence? can I do this in one line?
-		double singleDist = abs(a*p.x + b*p.y + c) / denom;
-		totalDist += singleDist;
+		totalDist += abs(a*p.x + b*p.y + c) / denom;
 	}
 	double avgDist = totalDist / edge.size();
 
 	if(avgDist < 10) {
 		thetaCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
-		cout << "x0, y0, vx, vy: " << x0 << " " << y0 << " " << vx << " " << vy << endl;
-		cout << "shift correction: " << shiftCorrection << endl;
-		cout << "theta correction: " << thetaCorrection << endl;
 		return true;
 	}
 	return false;
 }
 
-PuzzlePiece::PuzzlePiece() {
-	// empty
-}
+PuzzlePiece::PuzzlePiece() {}
 
 PuzzlePiece::PuzzlePiece(Mat m, int i) {
 	img = m;
 	number = i+1;
 }
 
-// todo: break this into steps. first get the piece border, then split into chunks
+// identify piece border and split into 4 edges
 void PuzzlePiece::process(bool verbose) {
-	// check that the image is valid
 
 	Scalar blue(255, 0, 0);
 	Scalar red(0, 0, 255);
@@ -231,7 +106,7 @@ void PuzzlePiece::process(bool verbose) {
 	vector<Scalar> colors = {blue, red, green, purple};
 
 	// identify background color
-	Mat img_hsv;  // possible to display?
+	Mat img_hsv;
 	cvtColor(img, img_hsv, COLOR_BGR2HSV);
 	vector<Vec3b> backgroundColors;
 	int cornerSize = 50;
@@ -272,45 +147,39 @@ void PuzzlePiece::process(bool verbose) {
 	double v_channel_width = v_channel_max - v_channel_min;
 	double v_avg = total_v / backgroundColors.size();
 
-	// for light green background: (0.5, 1.5, 1.5)
-	// for white background: (1, 5, 5) is ok not great
-	double hueBuffer = 2;  // fraction denominator of color range that is added to each end
+	// create color mask
+	Mat color_mask;
+	double hueBuffer = 2;  // fraction denominator of range that is added to each end
 	double satBuffer = 2;
 	double valueBuffer = 2;
-	// Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/colorRangeBuffer), max(0.0, s_channel_min - s_channel_width/colorRangeBuffer), max(0.0, v_channel_min - v_channel_width/colorRangeBuffer));
-	// Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/colorRangeBuffer), min(255.0, s_channel_max + s_channel_width/colorRangeBuffer), min(255.0, v_channel_max + v_channel_width/colorRangeBuffer));
 	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/hueBuffer), max(0.0, s_channel_min - s_channel_width/satBuffer), max(0.0, v_channel_min - v_channel_width/valueBuffer));
 	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/hueBuffer), min(255.0, s_channel_max + s_channel_width/satBuffer), min(255.0, v_channel_max + v_channel_width/valueBuffer));
-	cout << "value range: " << colorLowerBound << " " << colorUpperBound << endl;
-
-	// Mat blurredImage;
-	// blur(img, blurredImage, Size(20, 20));
-	// cout << "color bounds: " << colorLowerBound << " " << colorUpperBound << endl;
-	Mat color_mask;
 	inRange(img_hsv, colorLowerBound, colorUpperBound, color_mask);
 	color_mask = 255 - color_mask;  // invert
 	if(verbose) {
-		namedWindow("grey");
-		imshow("grey", color_mask);
-		waitKey(0);
-	}
-	Mat close_kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
-	morphologyEx(color_mask, color_mask, MORPH_CLOSE, close_kernel);
-	if(verbose) {
+		namedWindow("mask");
 		imshow("grey", color_mask);
 		waitKey(0);
 	}
 
-	// scale the brightnes level
+	// morphological close
+	Mat close_kernel = getStructuringElement(MORPH_ELLIPSE, Size(3, 3));
+	morphologyEx(color_mask, color_mask, MORPH_CLOSE, close_kernel);
+	if(verbose) {
+		imshow("mask", color_mask);
+		waitKey(0);
+		destroyWindow("mask");
+	}
+
+	// adjust the brightness level
 	if(PuzzlePiece::avgBrightness == 0) {
 		PuzzlePiece::avgBrightness = v_avg;
 	}
 	img = img * PuzzlePiece::avgBrightness / v_avg;
 
+	// find contours
 	vector<vector<Point>> contours;
 	findContours(color_mask, contours, RETR_EXTERNAL, CHAIN_APPROX_NONE);
-	// alt: CHAIN_APPROX_SIMPLE
-
 	if(contours.size() < 2) {  // piece and coin
 		cout << "ERROR: no puzzle piece found" << endl;
 		return;
@@ -320,11 +189,12 @@ void PuzzlePiece::process(bool verbose) {
 	if(verbose) {
 		cout << "display all contours" << endl;
 		drawContours(img_copy, contours, -1, blue, 5);
-		imshow("grey", img_copy);
+		namedWindow("contours");
+		imshow("contours", img_copy);
 		waitKey(0);
 	}
 
-	// choose the biggest contours
+	// identify the biggest contours by area
 	outline = contours[0];
 	vector<Point> coin = contours[1];
 	double maxSize = contourArea(contours[0]);
@@ -343,17 +213,6 @@ void PuzzlePiece::process(bool verbose) {
 		}
 	}
 
-	// show all the contours and print their areas
-	/*
-	img_copy = img.clone();
-	for(int i = 0; i < contours.size(); i++) {
-		cout << contourArea(contours[i]) << endl;
-		drawContours(img_copy, contours, i, blue, 5);
-		imshow("grey", img_copy);
-		waitKey(0);
-	}
-	*/
-
 	// check which one is the circle
 	double outlineArea = contourArea(outline);
 	double coinArea = contourArea(coin);
@@ -369,33 +228,20 @@ void PuzzlePiece::process(bool verbose) {
 		vector<Point> temp = coin;
 		coin = outline;
 		outline = temp;
+		double tempRadius = coinRadius;
 		coinRadius = outlineRadius;
+		outlineRadius = tempRadius;
 	}
 
-	// scale everything up to regular size
-	// also include the scale factor
+	// scale image and piece outline based on size of coin
 	if(scalingLength == 0) {
 		scalingLength = coinRadius;
 	}
-	cout << "debug: diameter: " << 2*coinRadius << endl;
 	double normalize_factor = scalingLength / coinRadius;
 	cout << "Piece " << number << " scaling by " << normalize_factor << endl;
-	for(Point &p: outline) {
-		p.x *= normalize_factor;
-		p.y *= normalize_factor;
-	}
-	for(Point &p: coin) {  // just for debug purposes
-		p.x *= normalize_factor;
-		p.y *= normalize_factor;
-	}
-	// resize the original image
-	// not sure if this will reallocate properly
-	resize(img, img, Size(img.size[1] * normalize_factor, img.size[0] * normalize_factor));
+	scale(normalize_factor);
 
 	/*
-	// smooth out the contour
-	approxPolyDP(outline, outline, 30, true);
-
 	// output outline to file
 	ofstream outlineFile("piece_outline.csv");
 	for(Point p: outline) {
@@ -405,13 +251,18 @@ void PuzzlePiece::process(bool verbose) {
 	exit(0);
 	*/
 
-	// put contour into a vector bc drawContours() requires that
-	contours.clear();
-	contours.push_back(outline);
-	contours.push_back(coin);
-
 	if(verbose) {
 		// display the outline
+
+		for(Point &p: coin) {  // just for debug purposes
+			p.x *= normalize_factor;
+			p.y *= normalize_factor;
+		}
+
+		contours.clear();
+		contours.push_back(outline);
+		contours.push_back(coin);
+
 		img_copy = img.clone();
 		drawContours(img_copy, contours, 0, blue, 5);
 		drawContours(img_copy, contours, 1, red, 5);
@@ -557,7 +408,7 @@ void PuzzlePiece::process(bool verbose) {
 
 		// check if ratio is > 50%
 		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
 		if(occupiedRatio > 0.5) {
 			scanEnd = true;
 		} else {
@@ -598,7 +449,7 @@ void PuzzlePiece::process(bool verbose) {
 
 		// check if ratio is > 50%
 		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
+		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
 		if(occupiedRatio > 0.5) {
 			scanEnd = true;
 		} else {
@@ -623,7 +474,7 @@ void PuzzlePiece::process(bool verbose) {
 		waitKey(0);
 	}
 
-	cout << "num points: " << outline.size() << endl;
+	// cout << "num points: " << outline.size() << endl;
 
 	// find closest points to each of the corners of the core
 	// (future: identify corners on the contour and find the closest corner)
@@ -776,7 +627,7 @@ void PuzzlePiece::process(bool verbose) {
 		destroyWindow("grey");
 	}
 
-	cout << "number of points: " << outline.size() << endl;
+	// cout << "number of points: " << outline.size() << endl;
 }
 
 //returns true if 2 or more edges
@@ -1516,11 +1367,23 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 		int fullPuzzleRotation = stoi(rotationStr); // error handling
 		Point puzzleCenter = Point(min(puzzleWidth, puzzleHeight)/2, min(puzzleWidth, puzzleHeight)/2);
 		Mat t3 = getRotationMatrix2D(puzzleCenter, fullPuzzleRotation, 1);
-		Mat rotatedPuzzle = Mat::zeros(completedPuzzleImg.size(), completedPuzzleImg.type()); // don't want any remnants after the rotation
-		warpAffine(completedPuzzleImg, rotatedPuzzle, t3, rotatedPuzzle.size());
-		imshow("temp", rotatedPuzzle);
+		// maybe: create new rotated image w reversed dimensions instead of starting with big square image
+		warpAffine(completedPuzzleImg, completedPuzzleImg, t3, completedPuzzleImg.size());
+		imshow("temp", completedPuzzleImg);
 		waitKey(0);
 	}
+
+	// show piece numbers
+	for(int col = 0; col < columns; col++) {
+			for(int row = 0; row < rows; row++) {
+				PuzzlePiece *cursor = completedPuzzle[row][col];
+				// font size is arbitrary param
+				putText(completedPuzzleImg, to_string(cursor->number), (cursor->core.tl() + cursor->core.br())/2, FONT_HERSHEY_SIMPLEX, 5, Scalar(0, 0, 0), 20);
+				putText(completedPuzzleImg, to_string(cursor->number), (cursor->core.tl() + cursor->core.br())/2, FONT_HERSHEY_SIMPLEX, 5, Scalar(255, 255, 255), 5);
+			}
+	}
+	imshow("temp", completedPuzzleImg);
+	waitKey(0);
 
 	destroyWindow("temp");
 }
