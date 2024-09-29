@@ -16,6 +16,8 @@ public:
 	static int edgeImgBuffer;  // 10 looked visually good
 	Point rasterShift;  // amount edge center is shifted when made into raster image
 	bool isEdgeVar = false;
+	double thetaCorrection;  // for flat edges
+	int shiftCorrection; // for flat edges
 
 	bool isEdge();
 	void rotate_edge(vector<Point> unrotated, double theta);
@@ -54,6 +56,8 @@ public:
 	static int prevIndex(int index);
 	static int oppIndex(int index);
 	int downIndex();
+	int upIndex();
+	int leftIndex();
 	void print();
 	double rotationAngle();
 	double width();

@@ -169,6 +169,8 @@ int EdgeOfPiece::edgeImgBuffer = 10;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
 
+// return true if the edge is flat.
+// also calculate rotation and vertical shift required to line up the edge with border of puzzle
 bool EdgeOfPiece::isEdge() {
 	vector<double> fittedLine; // not clear if this is the right type
 	fitLine(edge, fittedLine, DIST_L2, 0.0, .01, .01);
@@ -191,7 +193,15 @@ bool EdgeOfPiece::isEdge() {
 	}
 	double avgDist = totalDist / edge.size();
 
-	return avgDist < 10;
+	if(avgDist < 10) {
+		thetaCorrection = atan(vy / vx) * 180 / 3.14;
+		shiftCorrection = -(y0 - vy/vx*x0);
+		cout << "x0, y0, vx, vy: " << x0 << " " << y0 << " " << vx << " " << vy << endl;
+		cout << "shift correction: " << shiftCorrection << endl;
+		cout << "theta correction: " << thetaCorrection << endl;
+		return true;
+	}
+	return false;
 }
 
 PuzzlePiece::PuzzlePiece() {
@@ -665,13 +675,13 @@ void PuzzlePiece::process(bool verbose) {
 		waitKey(0);
 	}
 
-	for(int i = 0; i < 4; i++) {
-		// check if these are actual edges and set isEdgeVar
-		edges[i].isEdgeVar = edges[i].isEdge();
+	// rotate and translate the edges for easier comparison
+	// translate all the edges to line up with the origin
+	// (easier to line up edges from images w different dimensions. can translate again to display.)
+	// do this for edges also to help w edge fitting
 
-		// rotate and translate the edges for easier comparison
-		// translate all the edges to line up with the origin
-		// (easier to line up edges from images w different dimensions. can translate again to display.)
+	for(int i = 0; i < 4; i++) {
+
 		Point midPoint;
 		if(i == 0) { midPoint = core.tl() + Point(core.width/2, 0); }
 		if(i == 1) { midPoint = core.tl() + Point(core.width, core.height/2); }
@@ -679,34 +689,32 @@ void PuzzlePiece::process(bool verbose) {
 		if(i == 3) { midPoint = core.tl() + Point(0, core.height/2); }
 		midpoints[i] = midPoint;
 
-		if(edges[i].isEdgeVar) { continue; }
 		for(Point &p: edges[i].edge) {
 			p -= midPoint;
 		}
 	}
 
 	// right edge: rotate by flipping across y = -x, then across y = 0 (origin is upper left)
-	if(!edges[1].isEdgeVar) {
-		for(Point &p: edges[1].edge) {
-			double temp = p.y;
-			p.y = -p.x;
-			p.x = temp;
-		}
+	for(Point &p: edges[1].edge) {
+		double temp = p.y;
+		p.y = -p.x;
+		p.x = temp;
 	}
 	// lower edge: rotate by flipping in x and y direction
-	if(!edges[2].isEdgeVar) {
-		for(Point &p: edges[2].edge) {
-			p.y = -p.y;
-			p.x = -p.x;
-		}
+	for(Point &p: edges[2].edge) {
+		p.y = -p.y;
+		p.x = -p.x;
 	}
 	// left edge: rotate by flipping across y = x then across y = 0 (origin is upper left)
-	if(!edges[3].isEdgeVar) {
-		for(Point &p: edges[3].edge) {
-			double temp = p.y;
-			p.y = p.x;
-			p.x = -temp;
-		}
+	for(Point &p: edges[3].edge) {
+		double temp = p.y;
+		p.y = p.x;
+		p.x = -temp;
+	}
+
+	// check if these are actual edges and set isEdgeVar
+	for(int i = 0; i < 4; i++) {
+		edges[i].isEdgeVar = edges[i].isEdge();
 	}
 
 	// create raster images of the edges
@@ -805,6 +813,14 @@ int PuzzlePiece::prevIndex(int index) {
 
 int PuzzlePiece::downIndex() {
 	return nextIndex(rightIndex);
+}
+
+int PuzzlePiece::upIndex() {
+	return prevIndex(rightIndex);
+}
+
+int PuzzlePiece::leftIndex() {
+	return oppIndex(rightIndex);
 }
 
 // close to 0 is a good match
@@ -1171,6 +1187,13 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 		Point su = correctionShiftUp;
 		correctionShiftUp.x = t_zero.at<double>(0, 0) * su.x + t_zero.at<double>(0, 1) * su.y + t_zero.at<double>(0, 2);
 		correctionShiftUp.y = t_zero.at<double>(1, 0) * su.x + t_zero.at<double>(1, 1) * su.y + t_zero.at<double>(1, 2);
+
+		// rotate edge corrections
+		for(EdgeOfPiece &e: edges) {
+			if(e.isEdgeVar) {
+				e.shiftCorrection = e.shiftCorrection * cos(theta);
+			}
+		}
 	}
 }
 
@@ -1303,11 +1326,21 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 	namedWindow("temp");
 
 	// figure out the size needed (come up with better way)
-	double width = completedPuzzle[0][0]->width();
-	double height = completedPuzzle[0][0]->height();
-	double edgeLength = max(columns * width, rows * height); // leave room for rotating at the end
+	double puzzleWidth = 0;
+	for(int i = 0; i < completedPuzzle[0].size(); i++) {
+		puzzleWidth += completedPuzzle[0][i]->width();
+	}
+	double puzzleHeight = 0;
+	for(int i = 0; i < completedPuzzle.size(); i++) {
+		puzzleHeight += completedPuzzle[i][0]->height();
+	}
+	double edgeLength = max(puzzleWidth, puzzleHeight) * 1.05; // leave room for rotating at the end
 	Mat completedPuzzleImg = Mat::zeros(edgeLength, edgeLength, completedPuzzle[0][0]->img.type());
 	cout << "completed puzzle size: " << completedPuzzleImg.size() << endl;
+
+	// debug
+	vector<Point> redDots;
+	vector<Point> blueDots;
 
 	// loop through the pieces and copy to completed image
 	for(int col = 0; col < columns; col++) {
@@ -1325,14 +1358,16 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			// rotation corrections
 			double correctionTheta = 0;
 
+			// issue: I'm assuming all the top edge and left edge have edges in the right place. if not, accessing those vars will cause errors.
 			if(row == 0 && col == 0) {  // top left corner
-				correctionTheta = 0;  // todo: correct rotation of the whole puzzle at the end
+				correctionTheta = (cursor->edges[cursor->leftIndex()].thetaCorrection + cursor->edges[cursor->upIndex()].thetaCorrection) / 2;
+				// todo: correct rotation of the whole puzzle at the end
 			}  else if(col == 0) {  // left edge
 				upNeighbor = completedPuzzle[row-1][col];
-				correctionTheta = cursor->correctionThetaUp + upNeighbor->finalRotationCorrection;
+				correctionTheta = cursor->edges[cursor->leftIndex()].thetaCorrection;
 			} else if(row == 0) {  // top edge
 				leftNeighbor = completedPuzzle[row][col-1];
-				correctionTheta = cursor->correctionThetaLeft + leftNeighbor->finalRotationCorrection;
+				correctionTheta = cursor->edges[cursor->upIndex()].thetaCorrection;
 			} else {  // most pieces
 				upNeighbor = completedPuzzle[row-1][col];
 				leftNeighbor = completedPuzzle[row][col-1];
@@ -1386,26 +1421,29 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 			Point2f shift; // about converting int to double if I just do Point
 
 			if(row == 0 && col == 0) {  // top left corner
-				shift = -(cursor->core.tl());
+				shift = -cursor->core.tl() + Point(cursor->edges[cursor->leftIndex()].shiftCorrection, cursor->edges[cursor->upIndex()].shiftCorrection);
 			}  else if(col == 0) {  // left edge
-				shift = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
+				int shiftX = - cursor->midpoints[3].x + cursor->edges[cursor->leftIndex()].shiftCorrection;
+				int shiftY = upNeighbor->midpoints[2].y - cursor->midpoints[0].y + cursor->correctionShiftUp.y;
+				shift = Point(shiftX, shiftY);
 			} else if(row == 0) {  // top edge
-				shift = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
+				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
+				int shiftY = - cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
+				shift = Point(shiftX, shiftY);
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
 
-			if(upNeighbor != nullptr) {
-				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;
-			}
-			if(leftNeighbor != nullptr) {
-				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1] << endl;
-			}
-
-			cout << "correction up: " << cursor->correctionShiftUp << endl;
-			cout << "correction left: " << cursor->correctionShiftLeft << endl;
+//			if(upNeighbor != nullptr) {
+//				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;
+//			}
+//			if(leftNeighbor != nullptr) {
+//				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1] << endl;
+//			}
+//			cout << "correction up: " << cursor->correctionShiftUp << endl;
+//			cout << "correction left: " << cursor->correctionShiftLeft << endl;
 
 			// translate
 			cursor->shift(shift, completedPuzzleImg.size());  // this makes cursor->img permanently much bigger, taking up a lot of RAM...
@@ -1413,6 +1451,18 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				cout << "show completed transformation" << endl;
 				imshow("temp", cursor->img);
 				waitKey(0);
+			}
+
+			// debug: draw midpoints and goal locations
+			if(verbose) {
+				blueDots.push_back(cursor->midpoints[0]);
+				blueDots.push_back(cursor->midpoints[3]);
+				if(upNeighbor != nullptr) {
+					redDots.push_back(upNeighbor->midpoints[2] + cursor->correctionShiftUp);
+				}
+				if(leftNeighbor != nullptr) {
+					redDots.push_back(leftNeighbor->midpoints[1] + cursor->correctionShiftLeft);
+				}
 			}
 
 			// copy the data within the piece outline to the final image
@@ -1433,6 +1483,14 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 		}
 	}
 
+	// debug
+	for(Point p: redDots) {
+		circle(completedPuzzleImg, p, 15, Scalar(0, 0, 255), -1);
+	}
+	for(Point p: blueDots) {
+		circle(completedPuzzleImg, p, 15, Scalar(255, 0, 0), -1);
+	}
+
 	if(checkRotation) cout << "Enter degrees of clockwise rotation" << endl;
 
 	// show completed puzzle
@@ -1443,7 +1501,7 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 		string rotationStr;
 		cin >> rotationStr; // not sure how this interacts with waitKey()
 		int fullPuzzleRotation = stoi(rotationStr); // error handling
-		Point puzzleCenter = Point((columns * height) / 2, (rows * width) / 2);
+		Point puzzleCenter = Point(min(puzzleWidth, puzzleHeight)/2, min(puzzleWidth, puzzleHeight)/2);
 		Mat t3 = getRotationMatrix2D(puzzleCenter, fullPuzzleRotation, 1);
 		Mat rotatedPuzzle = Mat::zeros(completedPuzzleImg.size(), completedPuzzleImg.type()); // don't want any remnants after the rotation
 		warpAffine(completedPuzzleImg, rotatedPuzzle, t3, rotatedPuzzle.size());
