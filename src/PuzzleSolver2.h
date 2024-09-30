@@ -8,19 +8,29 @@
 #ifndef PUZZLESOLVER2_H_
 #define PUZZLESOLVER2_H_
 
+class EdgeMatch {
+public:
+	double theta;
+	Point shift;
+	double score;
+};
+
 class EdgeOfPiece {
 public:
 	vector<Point> edge;
 	Mat edgeImg;
 	vector<Mat> rotEdgeImgs;
 	vector<double> rotEdgeImgDegrees;
-	static int edgeImgBuffer;  // 10 looked visually good
 	Point rasterShift;  // amount edge center is shifted when made into raster image
-	bool isEdgeVar = false;
+	bool isEdge = false;
 	double thetaCorrection;  // for flat edges
 	int shiftCorrection; // for flat edges
+	static int edgeImgBuffer;  // 10 looked visually good
+	static double edgeShrinkFactor; // shrink edges for faster processing
+	static int pixelShift; // for edge comparison
 
-	bool isEdge();
+	void processEdge();
+	static EdgeMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 };
 
 class PuzzlePiece {
@@ -33,7 +43,7 @@ public:
 	vector<Point> outline;
 	Rect core;
 	vector<Point> midpoints = vector<Point>(4);
-	int number; //the number of the piece
+	int number;
 	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	bool isConnected = false; // whether this piece has been connected to the puzzle
@@ -44,13 +54,13 @@ public:
 	double correctionThetaLeft;
 	double correctionThetaUp;
 	double finalRotationCorrection;
-	static double edgeShrinkFactor; // shrink edges for faster processing
 
 	void process(bool verbose=false); // process the image and get edge shapes
+	int scan(vector<Point> scanLine, Point increment, int scanDepth, int maxBuffer);
 	bool isCorner();
 	int countEdges(); //returns number of edges on the piece. 2 for corner, 1 for edge
 	//bool isEdge();  //returns true for corners
-	int orientRoot();
+	int rootRightIndex();
 	static int nextIndex(int index); //returns next index in clockwise order
 	static int prevIndex(int index);
 	static int oppIndex(int index);
@@ -62,26 +72,17 @@ public:
 	double width();
 	double height();
 	Point center();  // unused?
-	vector<Point> constructEdge(vector<Point> outline, int firstIdx, int secondIdx);
+	vector<Point> constructEdge(int firstIdx, int secondIdx);
 	void scale(double factor);
 	void shift(Point s, Size newSize);
 	void rotate(Point rotationCenter, double theta);
-
-	//constructors:
-	//PuzzlePiece();
 };
 
 class PieceMatch {
 public:
+	EdgeMatch match;
 	PuzzlePiece *piece;
 	int edgeIndex;
-	double theta;
-	double thetaLeft;
-	double thetaUp;
-	Point shift;
-	Point shiftLeft;
-	Point shiftUp;
-	double score;
 };
 
 class Puzzle {
@@ -100,9 +101,8 @@ public:
 	// search through all the pieces until it finds a match
 	// returns a pointer the piece with matching index
 	// if no match, returns NULL
-	static PieceMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool verbose=false); //finds the matching piece
-	PieceMatch match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
+	vector<PieceMatch> match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
 
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);

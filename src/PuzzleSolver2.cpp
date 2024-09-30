@@ -56,13 +56,16 @@ int main() {
 }
 
 int EdgeOfPiece::edgeImgBuffer = 10;
+double EdgeOfPiece::edgeShrinkFactor = 5;
+int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
-double PuzzlePiece::edgeShrinkFactor = 5;
 
-// return true if the edge is flat.
-// also calculate rotation and vertical shift required to line up the edge with border of puzzle
-bool EdgeOfPiece::isEdge() {
+
+// fit line to decide if the edge is flat.
+// if yes, calculate rotation and vertical shift required to line up the edge with border of puzzle.
+// if no, create raster images of the edge.
+void EdgeOfPiece::processEdge() {
 	vector<double> fittedLine;
 	fitLine(edge, fittedLine, DIST_L2, 0.0, .01, .01);
 
@@ -84,9 +87,30 @@ bool EdgeOfPiece::isEdge() {
 	if(avgDist < 10) {
 		thetaCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
-		return true;
+		isEdge = true;
+		return;
 	}
-	return false;
+	isEdge = false;
+
+	// create raster images of the edge
+	Rect edgeBound = boundingRect(edge);
+	edgeImg = Mat::zeros((edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer) / EdgeOfPiece::edgeShrinkFactor, (edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer) / EdgeOfPiece::edgeShrinkFactor, CV_8UC1);
+	rasterShift = (- Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer)) / EdgeOfPiece::edgeShrinkFactor;
+	for(Point p: edge) {
+		Point circleLoc = p / EdgeOfPiece::edgeShrinkFactor + rasterShift;
+		circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer / EdgeOfPiece::edgeShrinkFactor, 255, -1);
+	}
+	// raster images of rotated edges
+	for(int theta = -4; theta <= 4; theta +=2) {
+		rotEdgeImgDegrees.push_back(theta);
+	}
+	Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+	for(double deg: rotEdgeImgDegrees) {
+		Mat rotatedEdgeImg;
+		Mat rot_t = getRotationMatrix2D(rotationCenter, deg+180, 1);
+		warpAffine(edgeImg, rotatedEdgeImg, rot_t, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
+		rotEdgeImgs.push_back(rotatedEdgeImg);
+	}
 }
 
 PuzzlePiece::PuzzlePiece() {}
@@ -158,7 +182,7 @@ void PuzzlePiece::process(bool verbose) {
 	color_mask = 255 - color_mask;  // invert
 	if(verbose) {
 		namedWindow("mask");
-		imshow("grey", color_mask);
+		imshow("mask", color_mask);
 		waitKey(0);
 	}
 
@@ -195,42 +219,50 @@ void PuzzlePiece::process(bool verbose) {
 	}
 
 	// identify the biggest contours by area
-	outline = contours[0];
-	vector<Point> coin = contours[1];
-	double maxSize = contourArea(contours[0]);
-	double secondMaxSize = contourArea(contours[1]);
+	vector<Point> firstContour = contours[0];
+	vector<Point> secondContour = contours[1];
+	double maxSize = contourArea(firstContour);
+	double secondMaxSize = contourArea(secondContour);
 	for(int i = 1; i < contours.size(); i++) {
 		double currentArea = contourArea(contours[i]);
 		if(currentArea > maxSize) {
 			secondMaxSize = maxSize;
-			coin = outline;
+			secondContour = firstContour;
 			maxSize = currentArea;
-			outline = contours[i];
+			firstContour = contours[i];
 		}
 		else if(currentArea > secondMaxSize) {
 			secondMaxSize = currentArea;
-			coin = contours[i];
+			secondContour = contours[i];
 		}
 	}
 
 	// check which one is the circle
-	double outlineArea = contourArea(outline);
-	double coinArea = contourArea(coin);
+	double firstArea = contourArea(firstContour);
+	double secondArea = contourArea(secondContour);
 	double pi = atan(1)*4;
-	Rect outlineBound = boundingRect(outline);
-	Rect coinBound = boundingRect(coin);
-	double outlineRadius = max(outlineBound.width, outlineBound.height) / 2;
-	double coinRadius = max(coinBound.width, coinBound.height) / 2;
-	double coinCircleArea = pi * pow(coinRadius, 2);
-	double outlineCircleArea = pi * pow(outlineRadius, 2);
-	// swap outline and circle if needed
-	if(coinCircleArea / coinArea > outlineCircleArea / outlineArea) {
-		vector<Point> temp = coin;
-		coin = outline;
-		outline = temp;
-		double tempRadius = coinRadius;
-		coinRadius = outlineRadius;
-		outlineRadius = tempRadius;
+	Rect firstBox = boundingRect(firstContour);
+	Rect secondBox = boundingRect(secondContour);
+	double firstRadius = max(firstBox.width, firstBox.height) / 2;
+	double secondRadius = max(secondBox.width, secondBox.height) / 2;
+	double firstCircleArea = pi * pow(firstRadius, 2);
+	double secondCircleArea = pi * pow(secondRadius, 2);
+	// assign coin and outline based on circumscribed circle
+	vector<Point> coin;
+	double coinRadius;
+	double outlineRadius;
+	if(firstCircleArea / firstArea > secondCircleArea / secondArea) {
+		coin = secondContour;
+		coinRadius = secondRadius;
+		outline = firstContour;
+		outlineRadius = firstRadius;
+		core = firstBox;
+	} else {
+		coin = firstContour;
+		coinRadius = firstRadius;
+		outline = secondContour;
+		outlineRadius = secondRadius;
+		core = secondBox;
 	}
 
 	// scale image and piece outline based on size of coin
@@ -241,425 +273,211 @@ void PuzzlePiece::process(bool verbose) {
 	cout << "Piece " << number << " scaling by " << normalize_factor << endl;
 	scale(normalize_factor);
 
-	/*
-	// output outline to file
-	ofstream outlineFile("piece_outline.csv");
-	for(Point p: outline) {
-		outlineFile << p.x << "," << p.y << "\n";
-	}
-	outlineFile.close();
-	exit(0);
-	*/
-
 	if(verbose) {
-		// display the outline
-
-		for(Point &p: coin) {  // just for debug purposes
+		for(Point &p: coin) {
 			p.x *= normalize_factor;
 			p.y *= normalize_factor;
 		}
-
 		contours.clear();
 		contours.push_back(outline);
 		contours.push_back(coin);
 
+		// show coin in red
 		img_copy = img.clone();
 		drawContours(img_copy, contours, 0, blue, 5);
 		drawContours(img_copy, contours, 1, red, 5);
-		imshow("grey", img_copy);
+		imshow("contours", img_copy);
+		waitKey(0);
+
+		// show bounding box
+		rectangle(img_copy, core.tl(), core.br(), blue, 5);
+		imshow("contours", img_copy);
 		waitKey(0);
 	}
 
-	// bounding box
-	Rect boundingBox = boundingRect(outline);
-	if(verbose) {
-		rectangle(img_copy, boundingBox.tl(), boundingBox.br(), blue, 5);
-		imshow("grey", img_copy);
-		waitKey(0);
-	}
-
-	// set scan params based on size of bounding box.
-	// solves issue where images at different resolution were handled differently
-
-	// cout << "width " << boundingBox.width << ", height " << boundingBox.height << endl;
-	int scanWidth = max(boundingBox.width, boundingBox.height) / 16;
-	int scanDepth = max(boundingBox.width, boundingBox.height) / 40;
-
-	//decrease the bounding box to get the "core" rectangle of the piece
-	//todo: should have better way to choose increment (chose 50 pixels by trial and error)
-	core = boundingBox; // is this a copy? probably not...
-//	cout << "bounding box size: " << core.width << " " << core.height << endl;
-//	cout << "top left" << core.tl() << endl;
-//	cout << "bottom right" << core.br() << endl;
-
-	// for now, I'm not going to worry about the (common) case where all 4 corners are empty.
-	// it happens any time there are two opposite nubs.
-
-	// for some reason this was increasing the top left AND bottom right...
-	// core = Rect(core.tl() + Point(0, 10), core.br());
-
-	// I guess you can add Points. why?
-
-	// todo: stopping conditions if things go wrong e.g.
-	// todo: too much copy / paste of code here
+	// shrink the bounding box to get the "core" rectangle of the piece
+	int scanWidth = max(core.width, core.height) / 16;
+	int scanDepth = max(core.width, core.height) / 40;
 
 	// scan from top
-	double top_buffer = 0;
 	vector<Point> scanLine;
 	for(int i = 0; i < core.width / scanWidth; i++) {
 		scanLine.push_back(core.tl() + Point(i * scanWidth, 0));
 	}
-	bool scanEnd = false;
-	do {
-		double leftIndex = 0;
-		double rightIndex = scanLine.size() - 1;
-		for(; leftIndex < scanLine.size(); leftIndex++) {
-			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
-				break;
-			}
-		}
-		for(; rightIndex >= 0; rightIndex--) {
-			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
-				break;
-			}
-		}
-
-		// check if ratio is > 50%
-		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
-		if(occupiedRatio > 0.5) {
-			scanEnd = true;
-		} else {
-			for(Point &p: scanLine) {
-				p.y += scanDepth;
-			}
-			top_buffer += scanDepth;
-		}
-
-		if(top_buffer > core.height) {
-			cout << "ERROR: unable to identify piece core" << endl;
-			break;
-		}
-	} while(!scanEnd);
-
-	core = Rect(core.tl().x, core.tl().y + top_buffer, core.width, core.height - top_buffer);
+	int topBuffer = scan(scanLine, Point(0, scanDepth), scanDepth, core.height);
+	core = Rect(core.tl().x, core.tl().y + topBuffer, core.width, core.height - topBuffer);
 
 	// scan from bottom
-	double bottom_buffer = 0;
 	scanLine.clear();
 	for(int i = 0; i < core.width / scanWidth; i++) {
 		scanLine.push_back(core.tl() + Point(i * scanWidth, core.height));
 	}
-	scanEnd = false;
-	do {
-		double leftIndex = 0;
-		double rightIndex = scanLine.size() - 1;
-		for(; leftIndex < scanLine.size(); leftIndex++) {
-			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
-				break;
-			}
-		}
-		for(; rightIndex >= 0; rightIndex--) {
-			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
-				break;
-			}
-		}
-
-		// check if ratio is > 50%
-		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
-		if(occupiedRatio > 0.5) {
-			scanEnd = true;
-		} else {
-			for(Point &p: scanLine) {
-				p.y -= scanDepth;
-			}
-			bottom_buffer += scanDepth;
-		}
-
-		if(bottom_buffer > core.height) {
-			cout << "ERROR: unable to identify piece core" << endl;
-			break;
-		}
-	} while(!scanEnd);
-
-	core = Rect(core.tl().x, core.tl().y, core.width, core.height - bottom_buffer);
+	int bottomBuffer = scan(scanLine, Point(0, -scanDepth), scanDepth, core.height);
+	core = Rect(core.tl().x, core.tl().y, core.width, core.height - bottomBuffer);
 
 	// scan from left
-	double left_buffer = 0;
 	scanLine.clear();
 	for(int i = 0; i < core.height / scanWidth; i++) {
 		scanLine.push_back(core.tl() + Point(0, i * scanWidth));
 	}
-	scanEnd = false;
-	do {
-		double leftIndex = 0;
-		double rightIndex = scanLine.size() - 1;
-		for(; leftIndex < scanLine.size(); leftIndex++) {
-			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
-				break;
-			}
-		}
-		for(; rightIndex >= 0; rightIndex--) {
-			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
-				break;
-			}
-		}
-
-		// check if ratio is > 50%
-		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
-		if(occupiedRatio > 0.5) {
-			scanEnd = true;
-		} else {
-			for(Point &p: scanLine) {
-				p.x += scanDepth;
-			}
-			left_buffer += scanDepth;
-		}
-
-		if(left_buffer > core.width) {
-			cout << "ERROR: unable to identify piece core" << endl;
-			break;
-		}
-	} while(!scanEnd);
-
-	core = Rect(core.tl().x + left_buffer, core.tl().y, core.width - left_buffer, core.height);
+	int leftBuffer = scan(scanLine, Point(scanDepth, 0), scanDepth, core.width);
+	core = Rect(core.tl().x + leftBuffer, core.tl().y, core.width - leftBuffer, core.height);
 
 	// scan from right
-	double right_buffer = 0;
 	scanLine.clear();
 	for(int i = 0; i < core.height / scanWidth; i++) {
 		scanLine.push_back(core.tl() + Point(core.width, i * scanWidth));
 	}
-	scanEnd = false;
-	do {
-		double leftIndex = 0;
-		double rightIndex = scanLine.size() - 1;
-		for(; leftIndex < scanLine.size(); leftIndex++) {
-			if(pointPolygonTest(outline, scanLine[leftIndex], false) == 1) {
-				break;
-			}
-		}
-		for(; rightIndex >= 0; rightIndex--) {
-			if(pointPolygonTest(outline, scanLine[rightIndex], false) == 1) {
-				break;
-			}
-		}
-
-		// check if ratio is > 50%
-		double occupiedRatio = (rightIndex - leftIndex) / scanLine.size();
-		// cout << leftIndex << " " << rightIndex << " " << occupiedRatio << endl;
-		if(occupiedRatio > 0.5) {
-			scanEnd = true;
-		} else {
-			for(Point &p: scanLine) {
-				p.x -= scanDepth;
-			}
-			right_buffer += scanDepth;
-		}
-
-		if(right_buffer > core.width) {
-			cout << "ERROR: unable to identify piece core" << endl;
-			break;
-		}
-	} while(!scanEnd);
-
-	core = Rect(core.tl().x, core.tl().y, core.width - right_buffer, core.height);
+	int rightBuffer = scan(scanLine, Point(-scanDepth, 0), scanDepth, core.width);
+	core = Rect(core.tl().x, core.tl().y, core.width - rightBuffer, core.height);
 
 	if(verbose) {
 		// show core
 		rectangle(img_copy, core.tl(), core.br(), red, 5);
-		imshow("grey", img_copy);
+		imshow("contours", img_copy);
 		waitKey(0);
 	}
 
-	// cout << "num points: " << outline.size() << endl;
-
-	// find closest points to each of the corners of the core
-	// (future: identify corners on the contour and find the closest corner)
-	int tl_index = 0, tr_index = 0, bl_index = 0, br_index = 0;
-	double tl_mindist = 1000, tr_mindist = 1000, bl_mindist = 1000, br_mindist = 1000; // must be better default
+	// find closest point to each of corner of the core
+	vector<string> keys = {"TL", "TR", "BL", "BR"};
+	map<string, int> cornerIndices = {{"TL", 0}, {"TR", 0}, {"BL", 0}, {"BR", 0}};  // TL, TR, BL, BR
+	map<string, double> cornerMinDists = {{"TL", norm(core.tl() - outline[0])},
+															{"TR", norm(core.tl() + Point(core.width, 0) - outline[0])},
+															{"BL", norm(core.br() + Point(-(core.width), 0) - outline[0])},
+															{"BR", norm(core.br() - outline[0])}};
 	for(int i = 0; i < outline.size(); i++) {
-
-		double tl_dist = norm(core.tl() - outline[i]);
-		double tr_dist = norm(core.tl() + Point(core.width, 0) - outline[i]);
-		double bl_dist = norm(core.br() + Point(-(core.width), 0) - outline[i]);
-		double br_dist = norm(core.br() - outline[i]);
-
-		if (tl_dist < tl_mindist) {
-			tl_mindist = tl_dist;
-			tl_index = i;
-		}
-		if (tr_dist < tr_mindist) {
-			tr_mindist = tr_dist;
-			tr_index = i;
-		}
-		if (bl_dist < bl_mindist) {
-			bl_mindist = bl_dist;
-			bl_index = i;
-		}
-		if (br_dist < br_mindist) {
-			br_mindist = br_dist;
-			br_index = i;
+		map<string, double> cornerDists = {{"TL", norm(core.tl() - outline[i])},
+															{"TR", norm(core.tl() + Point(core.width, 0) - outline[i])},
+															{"BL", norm(core.br() + Point(-(core.width), 0) - outline[i])},
+															{"BR", norm(core.br() - outline[i])}};
+		for(string k: keys) {
+			if (cornerDists[k] < cornerMinDists[k]) {
+				cornerMinDists[k] = cornerDists[k];
+				cornerIndices[k] = i;
+			}
 		}
 	}
-
-	// make this a function : constructEdge(start_index, end_index, vector)
-	// end index needs the +1?
-	// better to pass outline by reference? I don't think I'm passing the data anyway.
-	// what if the ordering of the pieces is counter clockwise
-	edges[0].edge = constructEdge(outline, tr_index, tl_index);
-	edges[1].edge = constructEdge(outline, br_index, tr_index);
-	edges[2].edge = constructEdge(outline, bl_index, br_index);
-	edges[3].edge = constructEdge(outline, tl_index, bl_index);
-
-	// todo: verify that these edges are reasonable e.g. have more than a couple points
+	edges[0].edge = constructEdge(cornerIndices["TR"], cornerIndices["TL"]);
+	edges[1].edge = constructEdge(cornerIndices["BR"], cornerIndices["TR"]);
+	edges[2].edge = constructEdge(cornerIndices["BL"], cornerIndices["BR"]);
+	edges[3].edge = constructEdge(cornerIndices["TL"], cornerIndices["BL"]);
 
 	if(verbose) {
 		// reset the image and plot the edges
-		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
-		img_copy = img.clone(); // it's pointing to the same data I guess
+		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge};
+		img_copy = img.clone();
 		drawContours(img_copy, edge_vector, 0, blue, 5);
 		drawContours(img_copy, edge_vector, 1, red, 5);
 		drawContours(img_copy, edge_vector, 2, green, 5);
 		drawContours(img_copy, edge_vector, 3, purple, 5);
-		circle(img_copy, outline[tl_index], 5, blue, 15);
-		circle(img_copy, outline[tr_index], 5, red, 15);
-		circle(img_copy, outline[bl_index], 5, green, 15);
-		circle(img_copy, outline[br_index], 5, purple, 15);
-
-		imshow("grey", img_copy);
+		circle(img_copy, outline[cornerIndices["TL"]], 5, blue, 15);
+		circle(img_copy, outline[cornerIndices["TR"]], 5, red, 15);
+		circle(img_copy, outline[cornerIndices["BL"]], 5, green, 15);
+		circle(img_copy, outline[cornerIndices["BR"]], 5, purple, 15);
+		imshow("contours", img_copy);
 		waitKey(0);
 	}
 
-	// rotate and translate the edges for easier comparison
-	// translate all the edges to line up with the origin
-	// (easier to line up edges from images w different dimensions. can translate again to display.)
-	// do this for edges also to help w edge fitting
-
+	// rotate and translate the edges for easier processing and comparison
+	// translate: line up core midpoints with the origin
+	midpoints[0] = core.tl() + Point(core.width/2, 0);
+	midpoints[1] = core.tl() + Point(core.width, core.height/2);
+	midpoints[2] = core.tl() + Point(core.width/2, core.height);
+	midpoints[3] = core.tl() + Point(0, core.height/2);
 	for(int i = 0; i < 4; i++) {
-
-		Point midPoint;
-		if(i == 0) { midPoint = core.tl() + Point(core.width/2, 0); }
-		if(i == 1) { midPoint = core.tl() + Point(core.width, core.height/2); }
-		if(i == 2) { midPoint = core.tl() + Point(core.width/2, core.height); }
-		if(i == 3) { midPoint = core.tl() + Point(0, core.height/2); }
-		midpoints[i] = midPoint;
-
 		for(Point &p: edges[i].edge) {
-			p -= midPoint;
+			p -= midpoints[i];
 		}
 	}
-
-	// right edge: rotate by flipping across y = -x, then across y = 0 (origin is upper left)
-	for(Point &p: edges[1].edge) {
-		double temp = p.y;
-		p.y = -p.x;
-		p.x = temp;
+	// rotate edges
+	for(Point &p: edges[1].edge) {  // right edge
+		p = Point(p.y, -p.x);
 	}
-	// lower edge: rotate by flipping in x and y direction
-	for(Point &p: edges[2].edge) {
-		p.y = -p.y;
-		p.x = -p.x;
+	for(Point &p: edges[2].edge) {  // bottom edge
+		p = -p;
 	}
-	// left edge: rotate by flipping across y = x then across y = 0 (origin is upper left)
-	for(Point &p: edges[3].edge) {
-		double temp = p.y;
-		p.y = p.x;
-		p.x = -temp;
+	for(Point &p: edges[3].edge) {  // left edge
+		p = Point(-p.y, p.x);
 	}
 
-	// check if these are actual edges and set isEdgeVar
+	// process edges: check for flat edges and create raster edge images
 	for(int i = 0; i < 4; i++) {
-		edges[i].isEdgeVar = edges[i].isEdge();
-	}
-
-	// create raster images of the edges
-	for(int i = 0; i < 4; i++) {
-		if(edges[i].isEdgeVar) continue;
-		Rect edgeBound = boundingRect(edges[i].edge);
-		Mat edgeImg = Mat::zeros((edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer) / PuzzlePiece::edgeShrinkFactor, (edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer) / PuzzlePiece::edgeShrinkFactor, CV_8UC1);
-		edges[i].rasterShift = (- Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer)) / PuzzlePiece::edgeShrinkFactor;
-		for(Point p: edges[i].edge) {
-			Point circleLoc = p / PuzzlePiece::edgeShrinkFactor + edges[i].rasterShift;
-			circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer / PuzzlePiece::edgeShrinkFactor, 255, -1);
-		}
-		edges[i].edgeImg = edgeImg;  // same name causes any problems?
-
-		// rotated edges
-		for(int theta = -4; theta <= 4; theta +=2) {
-			edges[i].rotEdgeImgDegrees.push_back(theta);
-		}
-		Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
-		for(double d: edges[i].rotEdgeImgDegrees) {
-			Mat rotatedEdgeImg;
-			Mat rot_t = getRotationMatrix2D(rotationCenter, d+180, 1);
-			warpAffine(edgeImg, rotatedEdgeImg, rot_t, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
-			edges[i].rotEdgeImgs.push_back(rotatedEdgeImg);
-		}
+		edges[i].processEdge();
 	}
 
 	if(verbose) {
-			// reset the image and plot the edges
-			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge}; // temp so can plot
-			// shift the edges for easier plotting
+			// show the shifted / rotated edges
+			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge};
 			for(int i = 0; i < 4; i++) {
-				for(Point &p: edge_vector[i]) {  // apparently contents of edge_vector are copies?
-					p.x += 1000;
-					p.y += 1000;
+				for(Point &p: edge_vector[i]) {
+					p += Point(1000, 1000);  // shift for easier plotting
 				}
 			}
-			img_copy = img.clone(); // it's pointing to the same data I guess
+			img_copy = img.clone();
 			for(int i = 0; i < 4; i++) {
-				if(!edges[i].isEdgeVar) drawContours(img_copy, edge_vector, i, colors[i], 5);
+				if(!edges[i].isEdge) drawContours(img_copy, edge_vector, i, colors[i], 5);
 			}
-			imshow("grey", img_copy);
+			imshow("contours", img_copy);
 			waitKey(0);
 
-			if(!edges[0].isEdgeVar) {
+			// show one of the raster edge images
+			if(!edges[0].isEdge) {
 				imshow("grey", edges[0].edgeImg);
 				waitKey(0);
 			}
+			destroyWindow("contours");
 		}
-
-	if(verbose) {
-		destroyWindow("grey");
-	}
-
-	// cout << "number of points: " << outline.size() << endl;
 }
 
-//returns true if 2 or more edges
+int PuzzlePiece::scan(vector<Point> scanLine, Point increment, int scanDepth, int maxBuffer) {
+
+	int startIndex = 0;
+	int endIndex = 0;
+	int numScans = 0;
+	int buffer = 0;
+
+	for(numScans = 0; (endIndex - startIndex) / (double)scanLine.size() < 0.5; numScans++) {
+		buffer = numScans * scanDepth;
+		if(buffer >= maxBuffer) {
+			cout << "ERROR: unable to identify piece core" << endl;
+			break;
+		}
+
+		for(startIndex = 0; startIndex < scanLine.size(); startIndex++) {
+			if(pointPolygonTest(outline, scanLine[startIndex] + numScans * increment, false) == 1) {
+				break;
+			}
+		}
+		for(endIndex = scanLine.size() - 1; endIndex >= 0; endIndex--) {
+			if(pointPolygonTest(outline, scanLine[endIndex] + numScans * increment, false) == 1) {
+				break;
+			}
+		}
+	}
+	return buffer;
+}
+
+int PuzzlePiece::countEdges() {
+	return edges[0].isEdge + edges[1].isEdge + edges[2].isEdge + edges[3].isEdge;
+}
+
 bool PuzzlePiece::isCorner() {
 	return countEdges() >= 2;
 }
 
-// implement. also probably call this as part of pocessing and store as numEdges
-int PuzzlePiece::countEdges() {
-	int count = 0;
-	for(int i = 0; i < 4; i++) {
-		if(edges[i].isEdgeVar) {
-			count++;
-		}
-	}
-	return count;
-}
-
-// return index of right connection
+// return right index of top left corner
 // assumption: the piece has exactly 2 consecutive edges
-int PuzzlePiece::orientRoot() {
-	if(edges[0].isEdgeVar) {
-		if(edges[1].isEdgeVar) {
+int PuzzlePiece::rootRightIndex() {
+	if(edges[0].isEdge) {
+		if(edges[1].isEdge) {
 			return 2;
 		}
 		else return 1;
 	}
-	else if(edges[1].isEdgeVar) return 3;
+	else if(edges[1].isEdge) return 3;
 	else return 0;
 }
 
-// could have done this with mod
 int PuzzlePiece::oppIndex(int index) {
 	return (index + 2) % 4;
 }
@@ -684,18 +502,16 @@ int PuzzlePiece::leftIndex() {
 	return oppIndex(rightIndex);
 }
 
-// close to 0 is a good match
-// "bestShift" is amount 2nd edge needed to be shifted
-PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose) {
+// lower score is better.
+// "shift" and "theta" are corrections for edge 2.
+EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool verbose) {
 
-	int pixelShift = 5 / PuzzlePiece::edgeShrinkFactor;
-
-	int minHeight = min(firstEdge.edgeImg.rows, other.edgeImg.rows);
-	int maxHeight = max(firstEdge.edgeImg.rows, other.edgeImg.rows);
+	int minHeight = min(edge1.edgeImg.rows, edge2.edgeImg.rows);
+	int maxHeight = max(edge1.edgeImg.rows, edge2.edgeImg.rows);
 	int h_intervals = (maxHeight - minHeight) / pixelShift;
-	int minWidth = min(firstEdge.edgeImg.cols, other.edgeImg.cols);
+	int minWidth = min(edge1.edgeImg.cols, edge2.edgeImg.cols);
 	int windowWidth = minWidth * 9 / 10;
-	int maxWidth = max(firstEdge.edgeImg.cols, other.edgeImg.cols);
+	int maxWidth = max(edge1.edgeImg.cols, edge2.edgeImg.cols);
 	int w_intervals = (maxWidth - windowWidth) / pixelShift;
 
 	double minScore;
@@ -705,10 +521,10 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
 
-	for(int i = 0; i < other.rotEdgeImgDegrees.size(); i++) {
+	for(int i = 0; i < edge2.rotEdgeImgDegrees.size(); i++) {
 
-		double theta = other.rotEdgeImgDegrees[i];
-		Mat rotEdgeImg = other.rotEdgeImgs[i];
+		double theta = edge2.rotEdgeImgDegrees[i];
+		Mat rotEdgeImg = edge2.rotEdgeImgs[i];
 
 		for(int h = 0; h < h_intervals + 1; h++) {
 			for(int w = 0; w < w_intervals + 1; w++) {
@@ -721,7 +537,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 				int e2_row_min;
 				int e2_row_max;
 
-				if(firstEdge.edgeImg.rows == minHeight) {
+				if(edge1.edgeImg.rows == minHeight) {
 					e1_row_min = 0;
 					e1_row_max = minHeight;
 					e2_row_min = h * pixelShift;
@@ -733,7 +549,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 					e1_row_max = h * pixelShift + minHeight;
 				}
 
-				if(firstEdge.edgeImg.cols == minWidth) {
+				if(edge1.edgeImg.cols == minWidth) {
 					e1_col_min = 0;
 					e1_col_max = windowWidth;
 					e2_col_min = w * pixelShift;
@@ -746,7 +562,7 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 				}
 
 				// use rotated edge for e2
-				Mat e1 = firstEdge.edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
+				Mat e1 = edge1.edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
 				Mat e2 = rotEdgeImg.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
 
 				double score = edgeComparisonScore(e1, e2);
@@ -755,14 +571,14 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 					minScore = score;
 					bestTheta = theta;
 					// first flip the raster shift across center row bc working with flipped img
-					bestShift = Point(other.rasterShift.x, rotEdgeImg.rows - other.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - firstEdge.rasterShift;
+					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - edge1.rasterShift;
 					best_e1 = e1;  // for display
 					best_e2 = e2;
 					// cout << "first final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
 				} else if(score < minScore) {
 					minScore = score;
 					bestTheta = theta;
-					bestShift = Point(other.rasterShift.x, rotEdgeImg.rows - other.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - firstEdge.rasterShift;
+					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - edge1.rasterShift;
 					best_e1 = e1;  // for display
 					best_e2 = e2;
 					// cout << "new final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
@@ -785,15 +601,15 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	}
 
 	// cout << "best shift: " << bestShift << endl;
-	// cout << "undo flip: " << Point(0, other.edgeImg.rows - 2 * EdgeOfPiece::edgeImgBuffer) << endl;
-	// cout << "piece 2 raster shift: " << - other.rasterShift << endl;
-	// cout << "piece 1 raster shift: " << firstEdge.rasterShift << endl;
+	// cout << "undo flip: " << Point(0, edge2.edgeImg.rows - 2 * EdgeOfPiece::edgeImgBuffer) << endl;
+	// cout << "piece 2 raster shift: " << - edge2.rasterShift << endl;
+	// cout << "piece 1 raster shift: " << edge1.rasterShift << endl;
 
-	PieceMatch bestMatch;
+	EdgeMatch bestMatch;
 	bestMatch.score = minScore;
 	bestMatch.theta = bestTheta;
 	// cout << "theta of best score: " << bestTheta << endl;
-	bestMatch.shift = bestShift * PuzzlePiece::edgeShrinkFactor;
+	bestMatch.shift = bestShift * edgeShrinkFactor;
 	return bestMatch;
 
 	// ISSUE: these print blanks
@@ -801,15 +617,15 @@ PieceMatch Puzzle::matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool ver
 	// cout << e2.at<uchar>(e2.rows-1, e2.cols-1) << endl;
 
 	// prep by rotating one edge (by flipping twice)
-	vector<Point> flippedEdge = vector<Point>(other.edge.size());
-	for(int i = 0; i < other.edge.size(); i++) {
-		flippedEdge[i].x = -other.edge[i].x;
-		flippedEdge[i].y = -other.edge[i].y;
+	vector<Point> flippedEdge = vector<Point>(edge2.edge.size());
+	for(int i = 0; i < edge2.edge.size(); i++) {
+		flippedEdge[i].x = -edge2.edge[i].x;
+		flippedEdge[i].y = -edge2.edge[i].y;
 	}
 
 	// show the edges being compared
 	Mat blank = Mat::zeros(3000, 3000, CV_8UC3);
-	vector<vector<Point>> twoEdges = {firstEdge.edge, flippedEdge};
+	vector<vector<Point>> twoEdges = {edge1.edge, flippedEdge};
 	for(Point &p: twoEdges[0]) {
 		p.x += 1000;
 		p.y += 1000;
@@ -849,7 +665,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 	bool firstMatch = true;
 	double bestMatchScore;
 
-	if(piece->edges[edgeIndex].isEdgeVar) {
+	if(piece->edges[edgeIndex].isEdge) {
 		cout << "ERROR: calling match() on an edge piece" << endl;
 		bestMatch.piece = nullptr;
 		return bestMatch;
@@ -858,21 +674,21 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 	for(int i = 0; i < numPieces; i++) {
 		if(pieces[i].isConnected) continue; // skip if already connected
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdgeVar) continue; // skip if it's an edge
-			PieceMatch currentMatch = Puzzle::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
+			if(pieces[i].edges[j].isEdge) continue; // skip if it's an edge
+			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
 
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
 
 			if(firstMatch) {
 				bestMatchScore = currentMatch.score;
-				bestMatch = currentMatch;
+				bestMatch.match = currentMatch;
 				bestMatch.piece = &pieces[i];
 				bestMatch.edgeIndex = j;
 				firstMatch = false;
 			}
 			else if(currentMatch.score < bestMatchScore) { // low score is best
 				bestMatchScore = currentMatch.score;
-				bestMatch = currentMatch;
+				bestMatch.match = currentMatch;
 				bestMatch.piece = &pieces[i];
 				bestMatch.edgeIndex = j;
 			}
@@ -890,26 +706,29 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 	return bestMatch;
 }
 
-PieceMatch Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose) {
+vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose) {
 
 	PieceMatch bestMatchLeft;
 	PieceMatch bestMatchUp;
 	bool firstMatch = true;
 	double bestMatchScore;
 
-	if(leftPiece->edges[edgeIndexOfLeft].isEdgeVar || upPiece->edges[edgeIndexOfUp].isEdgeVar) {
+	if(leftPiece->edges[edgeIndexOfLeft].isEdge || upPiece->edges[edgeIndexOfUp].isEdge) {
 		cout << "ERROR: calling match() on an edge piece" << endl;
 		bestMatchLeft.piece = nullptr;
-		return bestMatchLeft;
+		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
+		return matches;
 	}
 
 	for(int i = 0; i < numPieces; i++) {
 		if(pieces[i].isConnected) continue; // skip if already connected
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdgeVar || pieces[i].edges[(j+1)%4].isEdgeVar) continue; // skip if either connection is an edge
-			PieceMatch matchLeft = Puzzle::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
-			PieceMatch matchUp = Puzzle::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
-			double score = matchLeft.score + matchUp.score;
+			if(pieces[i].edges[j].isEdge || pieces[i].edges[(j+1)%4].isEdge) continue; // skip if either connection is an edge
+			PieceMatch matchLeft;
+			matchLeft.match = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
+			PieceMatch matchUp;
+			matchUp.match = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
+			double score = matchLeft.match.score + matchUp.match.score;
 			cout << "Pieces " << leftPiece->number << " and " << upPiece->number <<
 					" score " << score << " against Piece " << pieces[i].number <<
 					" with right index " << (j+2)%4  << endl;
@@ -920,14 +739,14 @@ PieceMatch Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePie
 				bestMatchLeft = matchLeft;
 				bestMatchUp = matchUp;
 				bestMatchLeft.piece = &pieces[i];
-				bestMatchLeft.edgeIndex = (j+2)%4;  // right index
+				bestMatchLeft.edgeIndex = j;
 			}
 			else if(score < bestMatchScore) { // low score is best
 				bestMatchScore = score;
 				bestMatchLeft = matchLeft;
 				bestMatchUp = matchUp;
 				bestMatchLeft.piece = &pieces[i];
-				bestMatchLeft.edgeIndex = (j+2)%4;  // right index
+				bestMatchLeft.edgeIndex = j;
 			}
 		}
 	}
@@ -935,21 +754,15 @@ PieceMatch Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePie
 	if(firstMatch) {
 		cout << "ERROR: remaining pieces are edges only." << endl;
 		bestMatchLeft.piece = nullptr;
-		return bestMatchLeft;
+		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
+		return matches;
 	}
-
-	// average corrections from up piece and left piece
-	// rotate the correction from upMatch
-	bestMatchLeft.shiftLeft = bestMatchLeft.shift;
-	bestMatchLeft.shiftUp = bestMatchUp.shift;
-	bestMatchLeft.thetaLeft = bestMatchLeft.theta;
-	bestMatchLeft.thetaUp = bestMatchUp.theta;
-	bestMatchLeft.score = bestMatchScore;
 
 	cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " match Piece "
 			<< bestMatchLeft.piece->number << " with right index " << bestMatchLeft.edgeIndex  << endl;
 
-	return bestMatchLeft;
+	vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
+	return matches;
 }
 
 void PuzzlePiece::print() {
@@ -976,13 +789,11 @@ double PuzzlePiece::height() {
 }
 
 Point PuzzlePiece::center() {
-	double x_center = core.tl().x + core.width / 2;
-	double y_center = core.tl().y + core.height / 2;
-	return Point(x_center, y_center);
+	return (core.tl() + core.br()) / 2;
 }
 
 // note: outline should be oriented counter clockwise bc outer contour. but, I don't think that guarantees sequential order.
-vector<Point> PuzzlePiece::constructEdge(vector<Point> outline, int firstIdx, int secondIdx) {
+vector<Point> PuzzlePiece::constructEdge(int firstIdx, int secondIdx) {
 	if(secondIdx > firstIdx) {
 		vector<Point> temp(outline.begin() + firstIdx, outline.begin() + secondIdx + 1);
 		return temp;
@@ -1049,7 +860,7 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 
 		// rotate edge corrections
 		for(EdgeOfPiece &e: edges) {
-			if(e.isEdgeVar) {
+			if(e.isEdge) {
 				e.shiftCorrection = e.shiftCorrection * cos(theta);
 			}
 		}
@@ -1083,7 +894,7 @@ void Puzzle::assemble(bool verbose) {
 	completedPuzzle.push_back(vector<PuzzlePiece*>());
 	completedPuzzle[0].push_back(&pieces[firstCornerIdx]);
 	pieces[firstCornerIdx].isConnected = true;
-	completedPuzzle[0][0]->rightIndex = completedPuzzle[0][0]->orientRoot();  // set orientation of top left corner
+	completedPuzzle[0][0]->rightIndex = completedPuzzle[0][0]->rootRightIndex();  // set orientation of top left corner
 	cout << "Root is piece " << completedPuzzle[0][0]->number << endl;
 
 	cout << "Start matching." << endl;
@@ -1091,7 +902,7 @@ void Puzzle::assemble(bool verbose) {
 	// construct top edge
 	cout << "Constructing top edge." << endl;
 	PuzzlePiece *cursor = completedPuzzle[0][0];
-	while(!cursor->edges[cursor->rightIndex].isEdgeVar && completedPuzzle[0].size() < numPieces) {
+	while(!cursor->edges[cursor->rightIndex].isEdge && completedPuzzle[0].size() < numPieces) {
 		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
 		if(matchingPiece.piece == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
@@ -1104,8 +915,8 @@ void Puzzle::assemble(bool verbose) {
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
 		// rotate clockwise 90deg (bc 180 deg then counter clock 90)
-		cursor->correctionShiftLeft = Point(-matchingPiece.shift.y, matchingPiece.shift.x);
-		cursor->correctionThetaLeft = matchingPiece.theta;
+		cursor->correctionShiftLeft = Point(-matchingPiece.match.shift.y, matchingPiece.match.shift.x);
+		cursor->correctionThetaLeft = matchingPiece.match.theta;
 	}
 	columns = completedPuzzle[0].size();
 	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
@@ -1122,7 +933,7 @@ void Puzzle::assemble(bool verbose) {
 	cout << "Constructing left edge." << endl;
 	cursor = completedPuzzle[0][0];  // reset cursor
 	for(int i = 1; i < rows; i++) {
-		if(cursor->edges[cursor->downIndex()].isEdgeVar) {
+		if(cursor->edges[cursor->downIndex()].isEdge) {
 			cout << "ERROR: unexpected edge encountered" << endl;
 			return;
 		}
@@ -1139,8 +950,8 @@ void Puzzle::assemble(bool verbose) {
 		cout << "Match: piece " << cursor->number << endl;
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::nextIndex(matchingPiece.edgeIndex);
-		cursor->correctionShiftUp = -matchingPiece.shift; // 180 degree rotation
-		cursor->correctionThetaUp = matchingPiece.theta;
+		cursor->correctionShiftUp = -matchingPiece.match.shift; // 180 degree rotation
+		cursor->correctionThetaUp = matchingPiece.match.theta;
 	}
 
 	// fill in the rest:
@@ -1148,19 +959,19 @@ void Puzzle::assemble(bool verbose) {
 		for(int j = 1; j < columns; j++) {
 			PuzzlePiece *leftPiece = completedPuzzle[i][j-1];
 			PuzzlePiece *upPiece = completedPuzzle[i-1][j];
-			PieceMatch matchingPiece = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
-			if(matchingPiece.piece == nullptr) {
+			vector<PieceMatch> matchingPieces = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
+			if(matchingPieces[0].piece == nullptr || matchingPieces[1].piece == nullptr) {
 				cout << "ERROR: no match found" << endl;
 				return;
 			}
-			cursor=matchingPiece.piece;
+			cursor=matchingPieces[0].piece;
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
-			cursor->rightIndex = matchingPiece.edgeIndex;
-			cursor->correctionShiftLeft = Point(-matchingPiece.shiftLeft.y, matchingPiece.shiftLeft.x);  // // rotate clockwise 90deg
-			cursor->correctionShiftUp = -matchingPiece.shiftUp; // 180 degree rotation
-			cursor->correctionThetaLeft = matchingPiece.thetaLeft;
-			cursor->correctionThetaUp = matchingPiece.thetaUp;
+			cursor->rightIndex = PuzzlePiece::oppIndex(matchingPieces[0].edgeIndex);
+			cursor->correctionShiftLeft = Point(-matchingPieces[0].match.shift.y, matchingPieces[0].match.shift.x);  // // rotate clockwise 90deg
+			cursor->correctionShiftUp = -matchingPieces[1].match.shift; // 180 degree rotation
+			cursor->correctionThetaLeft = matchingPieces[0].match.theta;
+			cursor->correctionThetaUp = matchingPieces[1].match.theta;
 		}
 	}
 	// todo: check for edges in the middle of the puzzle
@@ -1393,37 +1204,9 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 // note: if edge1 is large it can have parts cut off when comparing to smaller edges.
 //    and() is not affected but miss out on some xor() penalty. may be worth to fix.
 double edgeComparisonScore(Mat edge1, Mat edge2) {
-
 	Mat xor_mat;
 	Mat and_mat;
 	bitwise_xor(edge1, edge2, xor_mat);
 	bitwise_and(edge1, edge2, and_mat);
 	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
-
-	// double score = 0;
-
-//	for(int row = 0; row < edge1.rows; row++) {
-//		for(int col = 0; col < edge1.cols; col++) {
-//			// effectively rotating the 2nd image by flipping both coordinates
-//			score += abs((int)edge1.at<uchar>(row, col) - (int)edge2.at<uchar>(edge2.rows-row-1, edge2.cols-col-1));
-//		}
-//	}
-//	score /= (edge1.rows * edge1.cols);
-//	return score;
 }
-
-//idea: use the maze searching algorithm to start with the first puzzle piece.
-//it will save about one O(N) operation, finding the first corner.
-
-//testing:
-//I can test once I have everything but match() and loading in the pieces.
-//draw a grid and mark the edges. Mix up the pieces. Number them. Enter the edge letters into the computer.
-
-//deciding the dimensions
-//there are "piece" objects, with 4 numbered edges
-
-//Notes:
-//distance between points should also be comparable
-//a better algorithm would make all the connections for each piece,
-//and also deal with cases where there are multiple possible matches.
-//The program should be able to print some diagnostics to help with improvement
