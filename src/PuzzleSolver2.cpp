@@ -526,7 +526,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	int maxHeight = max(edge1.edgeImg.rows, edge2.edgeImg.rows);
 	int h_intervals = (maxHeight - minHeight) / pixelShift;
 	int minWidth = min(edge1.edgeImg.cols, edge2.edgeImg.cols);
-	int windowWidth = minWidth * 9 / 10;
+	int windowWidth = minWidth * 8 / 10;
 	int maxWidth = max(edge1.edgeImg.cols, edge2.edgeImg.cols);
 	int w_intervals = (maxWidth - windowWidth) / pixelShift;
 
@@ -557,10 +557,10 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					e1RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
 				}
 				if(edge1.edgeImg.cols <= edge2.edgeImg.cols) {
-					e1ColRange = Range(0, windowWidth);
+					e1ColRange = Range(minWidth/10, minWidth/10 + windowWidth);
 					e2ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				} else {
-					e2ColRange = Range(0, windowWidth);
+					e2ColRange = Range(minWidth/10, minWidth/10 + windowWidth);
 					e1ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				}
 				Mat e1 = edge1.edgeImg.rowRange(e1RowRange).colRange(e1ColRange);
