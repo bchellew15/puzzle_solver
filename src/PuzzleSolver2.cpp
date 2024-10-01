@@ -66,8 +66,12 @@ double PuzzlePiece::avgBrightness = 0;
 // if yes, calculate rotation and vertical shift required to line up the edge with border of puzzle.
 // if no, create raster images of the edge.
 void EdgeOfPiece::processEdge() {
+
+	vector<Point>::const_iterator start_iter = edge.begin() + edge.size() * 2/10;
+	vector<Point>::const_iterator end_iter = edge.begin() + edge.size() * 8/10;
+	vector<Point> middleOfEdge(start_iter, end_iter);
 	vector<double> fittedLine;
-	fitLine(edge, fittedLine, DIST_L2, 0.0, .01, .01);
+	fitLine(middleOfEdge, fittedLine, DIST_L2, 0.0, .01, .01);
 
 	double vx = fittedLine[0];
 	double vy = fittedLine[1];
@@ -87,7 +91,9 @@ void EdgeOfPiece::processEdge() {
 	if(avgDist < 10) {
 		rotCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
+		cout << "x0, y0, vx, vy: " << x0 << " " << y0 << " " << vx << " " << vy << endl;
 		cout << "processEdge shift correction: " << shiftCorrection << endl;
+		cout << "processEdge rot correction: " << rotCorrection << endl;
 		isEdge = true;
 		return;
 	}
@@ -488,7 +494,7 @@ int PuzzlePiece::nextIndex(int index) {
 }
 
 int PuzzlePiece::prevIndex(int index) {
-	return (index - 1) % 4;
+	return (index +3) % 4;
 }
 
 int PuzzlePiece::downIndex() {
@@ -934,9 +940,13 @@ void Puzzle::display(bool verbose) {
 			}  else if(col == 0) {  // left edge
 				upNeighbor = completedPuzzle[row-1][col];
 				theta = cursor->edges[cursor->leftIndex()].rotCorrection;
+				cout << "left edge rot correction: " << theta << endl;
 			} else if(row == 0) {  // top edge
 				leftNeighbor = completedPuzzle[row][col-1];
 				theta = cursor->edges[cursor->upIndex()].rotCorrection;
+				cout << "top edge rot correction: " << theta << endl;
+				cout << "up index: " << cursor->upIndex() << endl;
+				cout << "piece number: " << cursor->number << endl;
 			} else {  // most pieces
 				upNeighbor = completedPuzzle[row-1][col];
 				leftNeighbor = completedPuzzle[row][col-1];
@@ -964,16 +974,29 @@ void Puzzle::display(bool verbose) {
 				int shiftX = -cursor->midpoints[3].x + cursor->edges[cursor->leftIndex()].shiftCorrection;
 				int shiftY = upNeighbor->midpoints[2].y - cursor->midpoints[0].y + cursor->correctionShiftUp.y;
 				shift = Point(shiftX, shiftY);
+				cout << "left edge shift corrections: " << endl;
+				cout << "x edge: " << cursor->edges[cursor->leftIndex()].shiftCorrection << endl;
+				cout << "y: " << cursor->correctionShiftUp.y << endl;
+				cout << "cursor midpoint x: " << -cursor->midpoints[3].x << endl;
+				cout << "up neighbor midpoint: " << upNeighbor->midpoints[2].y << endl;
+				cout << "midpoint y: " << cursor->midpoints[0].y << endl;
 			} else if(row == 0) {  // top edge
 				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
 				int shiftY = -cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
 				shift = Point(shiftX, shiftY);
+				cout << "top edge shift corrections: " << endl;
+				cout << "x correction: " << cursor->correctionShiftLeft.x << endl;
+				cout << "y correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
+				cout << "cursor midpoint y: " << cursor->midpoints[0].y << endl;
+				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1].x << endl;
+				cout << "cursor midpoint: " << cursor->midpoints[3].x << endl;
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
 			cursor->shift(shift);  // translate the midpoints and core
+			cout << "final shift: " << shift << endl; // debug
 
 			if(verbose) {  // debug: draw midpoints and target locations
 				blueDots.push_back(cursor->midpoints[0]);
@@ -997,25 +1020,13 @@ void Puzzle::display(bool verbose) {
 				destroyWindow("pieces");
 			}
 
-			// copy piece to final puzzle image. clip target region so it doesn't go off edge of image.
+			// copy piece to final puzzle image
 			Rect outlineBox = boundingRect(cursor->outline);
 			Rect destinationBox = Rect(outlineBox.tl() + shift, outlineBox.size());
-			cout << "Destination box: " << destinationBox << endl;
-			Rect clippedDestBox = destinationBox & Rect({}, completedPuzzleImg.size());
-			cout << "clipped: " << clippedDestBox << endl;
+			cout << "outline box TL: " << outlineBox.tl() << endl;
+			// clip target region so it doesn't go off edge of image
+			Rect clippedDestBox = destinationBox & Rect(Point(0, 0), completedPuzzleImg.size());
 			Rect clippedOutlineBox = Rect(destinationBox.tl() - shift, clippedDestBox.size());
-			cout << "clipped outline: " << clippedOutlineBox << endl;
-
-//			int xClipLeft = abs(min(0, destinationBox.x));
-//			int xClipRight = abs(min(0, completedPuzzleImg.cols - (destinationBox.x + destinationBox.width)));
-//			int yClipTop = abs(min(0, destinationBox.y));
-//			int yClipBottom = abs(min(0, completedPuzzleImg.rows - (destinationBox.y + destinationBox.height)));
-//			// check if the piece is completely off the screen
-//			if(xClipLeft >= outlineBox.width || xClipRight >= outlineBox.width || yClipTop >= outlineBox.height || yClipBottom >= outlineBox.width) {
-//				continue;
-//			}
-//			Rect clippedOutlineBox = Rect(outlineBox.x + xClipLeft, outlineBox.y + yClipTop, outlineBox.width - xClipLeft - xClipRight, outlineBox.height - yClipTop - yClipBottom);
-//			Rect clippedDestBox = Rect(Point(destinationBox.x + xClipLeft, destinationBox.y + yClipTop), clippedOutlineBox.size());
 			cursor->img(clippedOutlineBox).copyTo(completedPuzzleImg(clippedDestBox), mask(clippedOutlineBox));
 			if(verbose) {
 				cout << "Show puzzle with new piece added:" << endl;
