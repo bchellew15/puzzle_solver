@@ -1050,7 +1050,7 @@ void Puzzle::display(bool verbose) {
 
 	// rotate the entire puzzle based on user input
 	string fullPuzzleRotStr;
-	cout << "Enter (integer) degrees of counterclockwise rotation" << endl;
+	cout << "Enter degrees of counterclockwise rotation: 0, 90, 180, or 270" << endl;
 	cin >> fullPuzzleRotStr;
 	int fullPuzzleRot = stoi(fullPuzzleRotStr);
 	Mat t_puzz;
@@ -1072,7 +1072,9 @@ void Puzzle::display(bool verbose) {
 			for(int row = 0; row < rows; row++) {
 				PuzzlePiece *cursor = completedPuzzle[row][col];
 				Point textLoc = (cursor->core.tl() + cursor->core.br()) / 2;
-				textLoc = rotatePoint(textLoc, t_puzz);
+				if(fullPuzzleRot != 0) {
+					textLoc = rotatePoint(textLoc, t_puzz);
+				}
 				putText(completedPuzzleImg, to_string(cursor->number), textLoc, FONT_HERSHEY_SIMPLEX, 5, Scalar(0, 0, 0), 20);
 				putText(completedPuzzleImg, to_string(cursor->number), textLoc, FONT_HERSHEY_SIMPLEX, 5, Scalar(255, 255, 255), 5);
 			}
