@@ -85,7 +85,7 @@ void EdgeOfPiece::processEdge() {
 	double avgDist = totalDist / edge.size();
 
 	if(avgDist < 10) {
-		thetaCorrection = atan(vy / vx) * 180 / 3.14;
+		rotCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
 		isEdge = true;
 		return;
@@ -422,7 +422,7 @@ void PuzzlePiece::process(bool verbose) {
 
 			// show one of the raster edge images
 			if(!edges[0].isEdge) {
-				imshow("grey", edges[0].edgeImg);
+				imshow("contours", edges[0].edgeImg);
 				waitKey(0);
 			}
 			destroyWindow("contours");
@@ -703,6 +703,10 @@ double PuzzlePiece::height() {
 	return core.width;
 }
 
+Point PuzzlePiece::center() {
+	return (core.tl() + core.br()) / 2;
+}
+
 vector<Point> PuzzlePiece::constructEdge(int firstIdx, int secondIdx) {
 	if(secondIdx > firstIdx) {
 		vector<Point> edge(outline.begin() + firstIdx, outline.begin() + secondIdx + 1);
@@ -733,48 +737,48 @@ void PuzzlePiece::shift(Point s, Size newSize) {
 	for(Point &p: midpoints) { p += s; }
 }
 
-// allow for other angles of rotation (esp. for core)
+// different behavior for theta = 90, 180, 270
 void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 	Mat t = getRotationMatrix2D(rotationCenter, theta, 1);
 	warpAffine(img, img, t, img.size());
+	for(Point &p: outline) { p = rotatePoint(p, t); }
+	for(Point &p: midpoints) { p = rotatePoint(p, t); }
 
-	for(Point &p: outline) {
-		double temp_x = p.x;
-		p.x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
-		p.y = t.at<double>(1, 0) * temp_x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
+	// rotate core and midpoints for big rotations
+	if(theta == 90) {
+		Point core_tr = core.tl() + Point(core.width, 0);
+		core = Rect(rotatePoint(core_tr, t), Size(core.height, core.width));
+		cycleMidpoints();
+	} else if(theta == 180) {  // core stays the same
+		core = Rect(rotatePoint(core.br(), t), Size(core.width, core.height));
+		cycleMidpoints(); cycleMidpoints();
+	} else if(theta == 270) {
+		Point core_bl = core.br() + Point(-core.width, 0);
+		core = Rect(rotatePoint(core_bl, t), Size(core.height, core.width));
+		cycleMidpoints(); cycleMidpoints(); cycleMidpoints();
 	}
 
-	// rotate core and midpoints, assuming rotationCenter is center of piece
-	// note: if theta = 180, core and midpoints stay the same
-	if(theta == 90 || theta == 270) {
-		core = Rect(core.tl().x + core.width/2 - core.height/2, core.tl().y + core.height/2 - core.width/2, core.height, core.width);
-		midpoints[0] = core.tl() + Point(core.width/2, 0);
-		midpoints[1] = core.tl() + Point(core.width, core.height/2);
-		midpoints[2] = core.tl() + Point(core.width/2, core.height);
-		midpoints[3] = core.tl() + Point(0, core.height/2);
-	} else if(theta < 90) {
-		for(Point &p: midpoints) {
-			double temp_x = p.x;
-			p.x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
-			p.y = t.at<double>(1, 0) * temp_x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
-		}
-
-		// rotate the shift corrections
+	// only for small corrections
+	else if(theta < 90) {
+		// rotate shift corrections
 		Mat t_zero = getRotationMatrix2D(Point(0, 0), theta, 1);
-		Point sl = correctionShiftLeft;
-		correctionShiftLeft.x = t_zero.at<double>(0, 0) * sl.x + t_zero.at<double>(0, 1) * sl.y + t_zero.at<double>(0, 2);
-		correctionShiftLeft.y = t_zero.at<double>(1, 0) * sl.x + t_zero.at<double>(1, 1) * sl.y + t_zero.at<double>(1, 2);
-		Point su = correctionShiftUp;
-		correctionShiftUp.x = t_zero.at<double>(0, 0) * su.x + t_zero.at<double>(0, 1) * su.y + t_zero.at<double>(0, 2);
-		correctionShiftUp.y = t_zero.at<double>(1, 0) * su.x + t_zero.at<double>(1, 1) * su.y + t_zero.at<double>(1, 2);
-
+		correctionShiftLeft = rotatePoint(correctionShiftLeft, t_zero);
+		correctionShiftUp = rotatePoint(correctionShiftUp, t_zero);
 		// rotate edge corrections
 		for(EdgeOfPiece &e: edges) {
 			if(e.isEdge) {
-				e.shiftCorrection = e.shiftCorrection * cos(theta);
+				e.shiftCorrection *= cos(theta * 3.14 / 180);
 			}
 		}
 	}
+}
+
+void PuzzlePiece::cycleMidpoints() {
+	Point temp = midpoints[0];
+	midpoints[0] = midpoints[1];
+	midpoints[1] = midpoints[2];
+	midpoints[2] = midpoints[3];
+	midpoints[3] = temp;
 }
 
 Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
@@ -791,56 +795,53 @@ void Puzzle::process(bool verbose) {
 void Puzzle::assemble(bool verbose) {
 
 	// find a corner
-	int firstCornerIdx = 0;
-	while(firstCornerIdx < numPieces && !(pieces[firstCornerIdx]).isCorner()) {
-		firstCornerIdx++;
+	int firstCornerIdx;
+	for(firstCornerIdx = 0; firstCornerIdx < numPieces; firstCornerIdx++) {
+		if(pieces[firstCornerIdx].isCorner()) break;
 	}
 	if(firstCornerIdx >= numPieces) {
 		cout << "ERROR: no corners found" << endl;
 		return;
 	}
-	cout << "First corner at index " << firstCornerIdx << endl;
+	PuzzlePiece *cursor = &pieces[firstCornerIdx];
+	cout << "First corner is piece number " << cursor->number << endl;
 
 	completedPuzzle.push_back(vector<PuzzlePiece*>());
-	completedPuzzle[0].push_back(&pieces[firstCornerIdx]);
-	pieces[firstCornerIdx].isConnected = true;
-	completedPuzzle[0][0]->rightIndex = completedPuzzle[0][0]->rootRightIndex();  // set orientation of top left corner
-	cout << "Root is piece " << completedPuzzle[0][0]->number << endl;
-
-	cout << "Start matching." << endl;
+	completedPuzzle[0].push_back(cursor);
+	cursor->isConnected = true;
+	cursor->rightIndex = cursor->rootRightIndex();  // set orientation of top left corner
 
 	// construct top edge
-	cout << "Constructing top edge." << endl;
-	PuzzlePiece *cursor = completedPuzzle[0][0];
+	cout << "Constructing top edge" << endl;
 	while(!cursor->edges[cursor->rightIndex].isEdge && completedPuzzle[0].size() < numPieces) {
+
 		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
-		if(matchingPiece.piece == nullptr) {
+		cursor = matchingPiece.piece;
+		if(cursor == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
 			return;
 		}
 
-		cursor = matchingPiece.piece;
-		completedPuzzle[0].push_back(cursor);
 		cout << "Match: piece " << cursor->number << endl;
+		completedPuzzle[0].push_back(cursor);
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::oppIndex(matchingPiece.edgeIndex);
-		// rotate clockwise 90deg (bc 180 deg then counter clock 90)
+		// shiftLeft: rotate clockwise 90 degrees bc matchingPiece is above while matching
 		cursor->correctionShiftLeft = Point(-matchingPiece.match.shift.y, matchingPiece.match.shift.x);
-		cursor->correctionThetaLeft = matchingPiece.match.theta;
+		cursor->correctionAngleLeft = matchingPiece.match.theta;
 	}
 	columns = completedPuzzle[0].size();
-	// todo: check if all the pieces have been used. if so, is rightmost piece an edge?
 
 	// calculate number of rows
 	if(numPieces % columns != 0) {
 		cout << "ERROR: " << columns << " columns found. Invalid for puzzle with " << numPieces << " pieces." << endl;
 	} else {
-		rows = numPieces / columns; // check division rules
-		cout << rows << "rows" << endl;
+		rows = numPieces / columns;
+		cout << "Puzzle size is " << rows << " x " << columns << " (rows, columns)" << endl;
 	}
 
 	// construct left edge
-	cout << "Constructing left edge." << endl;
+	cout << "Constructing left edge" << endl;
 	cursor = completedPuzzle[0][0];  // reset cursor
 	for(int i = 1; i < rows; i++) {
 		if(cursor->edges[cursor->downIndex()].isEdge) {
@@ -849,46 +850,44 @@ void Puzzle::assemble(bool verbose) {
 		}
 
 		PieceMatch matchingPiece = match(cursor, cursor->downIndex(), verbose);
-		if(matchingPiece.piece == nullptr) {
+		cursor = matchingPiece.piece;
+		if(cursor == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
 			return;
 		}
 
-		cursor = matchingPiece.piece;
-		completedPuzzle.push_back(vector<PuzzlePiece*>());
-		completedPuzzle[i].push_back(cursor);  // combine w previous line?
 		cout << "Match: piece " << cursor->number << endl;
+		completedPuzzle.push_back(vector<PuzzlePiece*>());
+		completedPuzzle[i].push_back(cursor);
 		cursor->isConnected = true;
 		cursor->rightIndex = PuzzlePiece::nextIndex(matchingPiece.edgeIndex);
-		cursor->correctionShiftUp = -matchingPiece.match.shift; // 180 degree rotation
-		cursor->correctionThetaUp = matchingPiece.match.theta;
+		cursor->correctionShiftUp = -matchingPiece.match.shift;  // rotate 180 degrees
+		cursor->correctionAngleUp = matchingPiece.match.theta;
 	}
 
-	// fill in the rest:
+	// fill in the rest of the puzzle
 	for(int i = 1; i < rows; i++) {
 		for(int j = 1; j < columns; j++) {
 			PuzzlePiece *leftPiece = completedPuzzle[i][j-1];
 			PuzzlePiece *upPiece = completedPuzzle[i-1][j];
 			vector<PieceMatch> matchingPieces = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
+			cursor=matchingPieces[0].piece;
 			if(matchingPieces[0].piece == nullptr || matchingPieces[1].piece == nullptr) {
 				cout << "ERROR: no match found" << endl;
 				return;
 			}
-			cursor=matchingPieces[0].piece;
+
+			cout << "Match: piece " << cursor->number << endl;
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
 			cursor->rightIndex = PuzzlePiece::oppIndex(matchingPieces[0].edgeIndex);
 			cursor->correctionShiftLeft = Point(-matchingPieces[0].match.shift.y, matchingPieces[0].match.shift.x);  // // rotate clockwise 90deg
-			cursor->correctionShiftUp = -matchingPieces[1].match.shift; // 180 degree rotation
-			cursor->correctionThetaLeft = matchingPieces[0].match.theta;
-			cursor->correctionThetaUp = matchingPieces[1].match.theta;
+			cursor->correctionShiftUp = -matchingPieces[1].match.shift;  // rotate 180 degrees
+			cursor->correctionAngleLeft = matchingPieces[0].match.theta;
+			cursor->correctionAngleUp = matchingPieces[1].match.theta;
 		}
 	}
-	// todo: check for edges in the middle of the puzzle
-
 	cout << "Puzzle completed!" << endl;
-
-	// todo: better evaluation of whether the puzzle is actually completed
 }
 
 // print piece numbers in solved configuration
@@ -901,89 +900,72 @@ void Puzzle::print() {
 	}
 }
 
-void Puzzle::display(bool verbose, bool checkRotation) {
+void Puzzle::display(bool verbose) {
 
-	namedWindow("temp");
-
-	// figure out the size needed (come up with better way)
+	// create img for final puzzle
 	double puzzleWidth = 0;
+	double puzzleHeight = 0;
 	for(int i = 0; i < completedPuzzle[0].size(); i++) {
 		puzzleWidth += completedPuzzle[0][i]->width();
 	}
-	double puzzleHeight = 0;
 	for(int i = 0; i < completedPuzzle.size(); i++) {
 		puzzleHeight += completedPuzzle[i][0]->height();
 	}
-	double edgeLength = max(puzzleWidth, puzzleHeight) * 1.05; // leave room for rotating at the end
-	Mat completedPuzzleImg = Mat::zeros(edgeLength, edgeLength, completedPuzzle[0][0]->img.type());
-	cout << "completed puzzle size: " << completedPuzzleImg.size() << endl;
+	Mat completedPuzzleImg = Mat::zeros(puzzleHeight * 1.05, puzzleWidth * 1.05, completedPuzzle[0][0]->img.type());
 
-	// debug
-	vector<Point> redDots;
+	vector<Point> redDots;  // for debug
 	vector<Point> blueDots;
 
-	// loop through the pieces and copy to completed image
+	// shift / rotate each piece and copy to completed puzzle img
 	for(int col = 0; col < columns; col++) {
 		for(int row = 0; row < rows; row++) {
 
- 			// todo: the rotation moves the top left corner if pieces are not square. need to account for that.
-			// use the new top-left corner in the calculations instead.
-
-			// if attaching left: rotate the left edge centroid. then line it up with the (rotated) centroid of the piece to the left.
-
 			PuzzlePiece *cursor = completedPuzzle[row][col];
+			cout << "Displaying piece " << cursor->number << endl;
 			PuzzlePiece *leftNeighbor = nullptr;
 			PuzzlePiece *upNeighbor = nullptr;
 
-			cout << "Piece " << cursor->number << endl;
-
 			// rotation corrections
-			double correctionTheta = 0;
-
-			// issue: I'm assuming all the top edge and left edge have edges in the right place. if not, accessing those vars will cause errors.
+			// (rotate first bc shift depends on location of edge midpoints)
+			double theta = 0;
 			if(row == 0 && col == 0) {  // top left corner
-				correctionTheta = (cursor->edges[cursor->leftIndex()].thetaCorrection + cursor->edges[cursor->upIndex()].thetaCorrection) / 2;
-				// todo: correct rotation of the whole puzzle at the end
+				theta = (cursor->edges[cursor->leftIndex()].rotCorrection + cursor->edges[cursor->upIndex()].rotCorrection) / 2;
 			}  else if(col == 0) {  // left edge
 				upNeighbor = completedPuzzle[row-1][col];
-				correctionTheta = cursor->edges[cursor->leftIndex()].thetaCorrection;
+				theta = cursor->edges[cursor->leftIndex()].rotCorrection;
 			} else if(row == 0) {  // top edge
 				leftNeighbor = completedPuzzle[row][col-1];
-				correctionTheta = cursor->edges[cursor->upIndex()].thetaCorrection;
+				theta = cursor->edges[cursor->upIndex()].rotCorrection;
 			} else {  // most pieces
 				upNeighbor = completedPuzzle[row-1][col];
 				leftNeighbor = completedPuzzle[row][col-1];
-				correctionTheta = (cursor->correctionThetaLeft + leftNeighbor->finalRotationCorrection + cursor->correctionThetaUp + upNeighbor->finalRotationCorrection) / 2;
+				theta = (cursor->correctionAngleLeft + leftNeighbor->finalCorrectionAngle + cursor->correctionAngleUp + upNeighbor->finalCorrectionAngle) / 2;
 			}
+			cursor->finalCorrectionAngle = theta;
 
 			// rotate about the center of the piece
-			// rotate before scaling so the width / height are correct
-			Point rotationCenter = Point(cursor->core.tl().x + cursor->core.width/2, cursor->core.tl().y + cursor->core.height/2);
-			cursor->rotate(rotationCenter, cursor->rotationAngle());  // only 90 and 270 cause core to rotate
-			cursor->rotate(rotationCenter, correctionTheta);
-			cursor->finalRotationCorrection = correctionTheta;
+			cursor->rotate(cursor->center(), cursor->rotationAngle());  // two steps bc of special behavior when angle = 90, 180, 270
+			cursor->rotate(cursor->center(), theta);
+
 			if(verbose) {
-				cout << "correction angle: " << correctionTheta << endl;
-				cout << "after just rotation:" << endl;
-				imshow("temp", cursor->img);
+				cout << "Correction angle: " << theta << endl;
+				cout << "Show after just rotation:" << endl;
+				namedWindow("pieces");
+				imshow("pieces", cursor->img);
 				waitKey(0);
 			}
 
 			// calculate translation
-			// note: rotate before calculating the shift bc depends on the location of core midpoints
-			// upNeighbor and leftNeighbor are already calculated during rotation
-			Point2f shift; // about converting int to double if I just do Point
-
+			Point shift;
 			if(row == 0 && col == 0) {  // top left corner
 				shift = -cursor->core.tl() + Point(cursor->edges[cursor->leftIndex()].shiftCorrection, cursor->edges[cursor->upIndex()].shiftCorrection);
 			}  else if(col == 0) {  // left edge
-				int shiftX = - cursor->midpoints[3].x + cursor->edges[cursor->leftIndex()].shiftCorrection;
+				int shiftX = -cursor->midpoints[3].x + cursor->edges[cursor->leftIndex()].shiftCorrection;
 				int shiftY = upNeighbor->midpoints[2].y - cursor->midpoints[0].y + cursor->correctionShiftUp.y;
 				shift = Point(shiftX, shiftY);
 			} else if(row == 0) {  // top edge
 				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
-				int shiftY = - cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
-				// cout << "debug: y shift correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
+				int shiftY = -cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
 				shift = Point(shiftX, shiftY);
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
@@ -991,20 +973,16 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				shift = (shiftUp + shiftLeft) / 2;
 			}
 
-//			cout << "correction up: " << cursor->correctionShiftUp << endl;
-//			cout << "correction left: " << cursor->correctionShiftLeft << endl;
-
 			// translate
-			cursor->shift(shift, completedPuzzleImg.size());  // this makes cursor->img permanently much bigger, taking up a lot of RAM...
+			cursor->shift(shift, completedPuzzleImg.size());
 			if(verbose) {
-				cout << "shift: " << shift << endl;
-				cout << "show completed transformation" << endl;
-				imshow("temp", cursor->img);
+				cout << "Correction shift: " << shift << endl;
+				cout << "Show completed transformation:" << endl;
+				imshow("pieces", cursor->img);
 				waitKey(0);
 			}
 
-			// debug: draw midpoints and goal locations
-			if(verbose) {
+			if(verbose) {  // debug: draw midpoints and target locations
 				blueDots.push_back(cursor->midpoints[0]);
 				blueDots.push_back(cursor->midpoints[3]);
 				if(upNeighbor != nullptr) {
@@ -1015,61 +993,74 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				}
 			}
 
-			// copy the data within the piece outline to the final image
+			// copy the pixels within the piece outline to the final image
 			Mat mask = Mat::zeros(cursor->img.size(), cursor->img.type());
-			vector<vector<Point>> outlines = {cursor->outline};
-			drawContours(mask, outlines, -1, Scalar(255, 255, 255), -1); // thickness=-1 fills in the contour
+			vector<vector<Point>> outline_vec = {cursor->outline};
+			drawContours(mask, outline_vec, -1, Scalar(255, 255, 255), -1);  // thickness=-1 fills in the contour
 			if(verbose) {
 				cout << "show mask" << endl;
-				imshow("temp", mask);
+				imshow("pieces", mask);
 				waitKey(0);
+				destroyWindow("pieces");
 			}
+
 			cursor->img.copyTo(completedPuzzleImg, mask);
 			if(verbose) {
-				cout << "show completed puzzle with new piece" << endl;
-				imshow("temp", completedPuzzleImg);
+				cout << "Show puzzle with new piece added:" << endl;
+				namedWindow("completed puzzle");
+				imshow("completed puzzle", completedPuzzleImg);
 				waitKey(0);
 			}
 		}
 	}
 
-	// debug
-	for(Point p: redDots) {
+	for(Point p: redDots) {  // debug
 		circle(completedPuzzleImg, p, 15, Scalar(0, 0, 255), -1);
 	}
 	for(Point p: blueDots) {
 		circle(completedPuzzleImg, p, 15, Scalar(255, 0, 0), -1);
 	}
 
-	if(checkRotation) cout << "Enter degrees of clockwise rotation" << endl;
-
 	// show completed puzzle
-	imshow("temp", completedPuzzleImg);
+	cout << "Enter (integer) degrees of counterclockwise rotation" << endl;
+	imshow("completed puzzle", completedPuzzleImg);
 	waitKey(0);
 
-	if(checkRotation) {
-		string rotationStr;
-		cin >> rotationStr; // not sure how this interacts with waitKey()
-		int fullPuzzleRotation = stoi(rotationStr); // error handling
-		Point puzzleCenter = Point(min(puzzleWidth, puzzleHeight)/2, min(puzzleWidth, puzzleHeight)/2);
-		Mat t3 = getRotationMatrix2D(puzzleCenter, fullPuzzleRotation, 1);
-		// maybe: create new rotated image w reversed dimensions instead of starting with big square image
-		warpAffine(completedPuzzleImg, completedPuzzleImg, t3, completedPuzzleImg.size());
-		imshow("temp", completedPuzzleImg);
-		waitKey(0);
+	// rotate the entire puzzle based on user input
+	string fullPuzzleRotStr;
+	cin >> fullPuzzleRotStr;
+	int fullPuzzleRot = stoi(fullPuzzleRotStr);
+	Mat t_puzz;
+	if(fullPuzzleRot == 90) {
+		t_puzz = getRotationMatrix2D(Point(max(puzzleWidth, puzzleHeight)/2, max(puzzleWidth, puzzleHeight)/2), fullPuzzleRot, 1);
+		warpAffine(completedPuzzleImg, completedPuzzleImg, t_puzz, Size(puzzleHeight, puzzleWidth));
+	} else if(fullPuzzleRot == 180) {
+		t_puzz = getRotationMatrix2D(Point(puzzleWidth/2, puzzleHeight/2), fullPuzzleRot, 1);
+		warpAffine(completedPuzzleImg, completedPuzzleImg, t_puzz, Size(puzzleWidth, puzzleHeight));
+	} else if(fullPuzzleRot == 270) {
+		t_puzz = getRotationMatrix2D(Point(min(puzzleWidth, puzzleHeight)/2, min(puzzleWidth, puzzleHeight)/2), fullPuzzleRot, 1);
+		warpAffine(completedPuzzleImg, completedPuzzleImg, t_puzz, Size(puzzleHeight, puzzleWidth));
 	}
+	imshow("completed puzzle", completedPuzzleImg);
+	waitKey(0);
 
 	// show piece numbers
 	for(int col = 0; col < columns; col++) {
 			for(int row = 0; row < rows; row++) {
 				PuzzlePiece *cursor = completedPuzzle[row][col];
-				// font size is arbitrary param
-				putText(completedPuzzleImg, to_string(cursor->number), (cursor->core.tl() + cursor->core.br())/2, FONT_HERSHEY_SIMPLEX, 5, Scalar(0, 0, 0), 20);
-				putText(completedPuzzleImg, to_string(cursor->number), (cursor->core.tl() + cursor->core.br())/2, FONT_HERSHEY_SIMPLEX, 5, Scalar(255, 255, 255), 5);
+				Point textLoc = (cursor->core.tl() + cursor->core.br()) / 2;
+				textLoc = rotatePoint(textLoc, t_puzz);
+				putText(completedPuzzleImg, to_string(cursor->number), textLoc, FONT_HERSHEY_SIMPLEX, 5, Scalar(0, 0, 0), 20);
+				putText(completedPuzzleImg, to_string(cursor->number), textLoc, FONT_HERSHEY_SIMPLEX, 5, Scalar(255, 255, 255), 5);
 			}
 	}
-	imshow("temp", completedPuzzleImg);
+	imshow("completed puzzle", completedPuzzleImg);
 	waitKey(0);
+	destroyWindow("completed puzzle");
+}
 
-	destroyWindow("temp");
+Point rotatePoint(Point p, Mat t) {
+	double x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
+	double y = t.at<double>(1, 0) * p.x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
+	return Point(x, y);
 }
