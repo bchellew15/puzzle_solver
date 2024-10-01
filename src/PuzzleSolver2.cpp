@@ -102,10 +102,10 @@ void EdgeOfPiece::processEdge() {
 	}
 	// raster images of rotated edges
 	for(int theta = -4; theta <= 4; theta +=2) {
-		rotEdgeImgDegrees.push_back(theta);
+		rotEdgeImgAngles.push_back(theta);
 	}
 	Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
-	for(double deg: rotEdgeImgDegrees) {
+	for(double deg: rotEdgeImgAngles) {
 		Mat rotatedEdgeImg;
 		Mat rot_t = getRotationMatrix2D(rotationCenter, deg+180, 1);
 		warpAffine(edgeImg, rotatedEdgeImg, rot_t, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
@@ -502,8 +502,17 @@ int PuzzlePiece::leftIndex() {
 	return oppIndex(rightIndex);
 }
 
+double EdgeOfPiece::edgeComparisonScore(Mat edge1, Mat edge2) {
+	Mat xor_mat;
+	Mat and_mat;
+	bitwise_xor(edge1, edge2, xor_mat);
+	bitwise_and(edge1, edge2, and_mat);
+	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
+}
+
 // lower score is better.
 // "shift" and "theta" are corrections for edge 2.
+// edge2 images are rotated ~180 degrees for comparison.
 EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool verbose) {
 
 	int minHeight = min(edge1.edgeImg.rows, edge2.edgeImg.rows);
@@ -517,71 +526,51 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	double minScore;
 	int bestTheta;
 	Point bestShift;
-	bool firstScore = true;
 	Mat best_e1; // for display only
 	Mat best_e2; // for display only
+	bool firstMatch = true;
 
-	for(int i = 0; i < edge2.rotEdgeImgDegrees.size(); i++) {
+	for(int i = 0; i < edge2.rotEdgeImgAngles.size(); i++) {
 
-		double theta = edge2.rotEdgeImgDegrees[i];
+		double theta = edge2.rotEdgeImgAngles[i];
 		Mat rotEdgeImg = edge2.rotEdgeImgs[i];
 
 		for(int h = 0; h < h_intervals + 1; h++) {
 			for(int w = 0; w < w_intervals + 1; w++) {
-				int e1_col_min;
-				int e1_col_max;
-				int e2_col_min;
-				int e2_col_max;
-				int e1_row_min;
-				int e1_row_max;
-				int e2_row_min;
-				int e2_row_max;
+				Range e1ColRange;
+				Range e2ColRange;
+				Range e1RowRange;
+				Range e2RowRange;
 
-				if(edge1.edgeImg.rows == minHeight) {
-					e1_row_min = 0;
-					e1_row_max = minHeight;
-					e2_row_min = h * pixelShift;
-					e2_row_max = h * pixelShift + minHeight;
+				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+					e1RowRange = Range(0, minHeight);
+					e2RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
 				} else {
-					e2_row_min = 0;
-					e2_row_max = minHeight;
-					e1_row_min = h * pixelShift;
-					e1_row_max = h * pixelShift + minHeight;
+					e2RowRange = Range(0, minHeight);
+					e1RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
 				}
-
-				if(edge1.edgeImg.cols == minWidth) {
-					e1_col_min = 0;
-					e1_col_max = windowWidth;
-					e2_col_min = w * pixelShift;
-					e2_col_max = w * pixelShift + windowWidth;
+				if(edge1.edgeImg.cols <= edge2.edgeImg.cols) {
+					e1ColRange = Range(0, windowWidth);
+					e2ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				} else {
-					e2_col_min = 0;
-					e2_col_max = windowWidth;
-					e1_col_min = w * pixelShift;
-					e1_col_max = w * pixelShift + windowWidth;
+					e2ColRange = Range(0, windowWidth);
+					e1ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				}
-
-				// use rotated edge for e2
-				Mat e1 = edge1.edgeImg.rowRange(e1_row_min, e1_row_max).colRange(e1_col_min, e1_col_max);
-				Mat e2 = rotEdgeImg.rowRange(e2_row_min, e2_row_max).colRange(e2_col_min, e2_col_max);
+				Mat e1 = edge1.edgeImg.rowRange(e1RowRange).colRange(e1ColRange);
+				Mat e2 = rotEdgeImg.rowRange(e2RowRange).colRange(e2ColRange);
 
 				double score = edgeComparisonScore(e1, e2);
-				if(firstScore) {
-					firstScore = false;
+
+				if(firstMatch || score < minScore) {
+					if(firstMatch) firstMatch = false;
 					minScore = score;
 					bestTheta = theta;
-					// first flip the raster shift across center row bc working with flipped img
-					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - edge1.rasterShift;
+					// (1) apply edge2 raster shift, but fliped across center row bc edge2 is rotated 180 degrees.
+					// (2) apply the shift calculated in this function
+					// (3) apply reverse of edge1 raster shift
+					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
 					best_e1 = e1;  // for display
 					best_e2 = e2;
-					// cout << "first final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
-				} else if(score < minScore) {
-					minScore = score;
-					bestTheta = theta;
-					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) - edge1.rasterShift;
-					best_e1 = e1;  // for display
-					best_e2 = e2;
-					// cout << "new final correction: " << Point(e1_col_min - e2_col_min, e1_row_min - e2_row_min) << endl;
 				}
 			}
 		}
@@ -590,7 +579,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	if(verbose) {
 		cout << "best theta: " << bestTheta << endl;
 
-		Mat bothEdges = Mat::zeros(best_e1.size(), CV_8UC3);
+		Mat bothEdges;
 		Mat channels[3] = {best_e1, Mat::zeros(best_e1.size(), CV_8UC1), best_e2};
 		merge(channels, 3, bothEdges);
 
@@ -600,93 +589,35 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 		destroyWindow("edgeMatch");
 	}
 
-	// cout << "best shift: " << bestShift << endl;
-	// cout << "undo flip: " << Point(0, edge2.edgeImg.rows - 2 * EdgeOfPiece::edgeImgBuffer) << endl;
-	// cout << "piece 2 raster shift: " << - edge2.rasterShift << endl;
-	// cout << "piece 1 raster shift: " << edge1.rasterShift << endl;
-
 	EdgeMatch bestMatch;
 	bestMatch.score = minScore;
 	bestMatch.theta = bestTheta;
-	// cout << "theta of best score: " << bestTheta << endl;
 	bestMatch.shift = bestShift * edgeShrinkFactor;
 	return bestMatch;
-
-	// ISSUE: these print blanks
-	// cout << e1.at<uchar>(0, 0) << endl;
-	// cout << e2.at<uchar>(e2.rows-1, e2.cols-1) << endl;
-
-	// prep by rotating one edge (by flipping twice)
-	vector<Point> flippedEdge = vector<Point>(edge2.edge.size());
-	for(int i = 0; i < edge2.edge.size(); i++) {
-		flippedEdge[i].x = -edge2.edge[i].x;
-		flippedEdge[i].y = -edge2.edge[i].y;
-	}
-
-	// show the edges being compared
-	Mat blank = Mat::zeros(3000, 3000, CV_8UC3);
-	vector<vector<Point>> twoEdges = {edge1.edge, flippedEdge};
-	for(Point &p: twoEdges[0]) {
-		p.x += 1000;
-		p.y += 1000;
-	}
-	for(Point &p: twoEdges[1]) {
-		p.x += 1000;
-		p.y += 1000;
-	}
-
-	if(verbose) {
-		namedWindow("compare edges");
-		// drawContours(blank, twoEdges, 0, Scalar(255, 0, 0), 5);
-		// drawContours(blank, twoEdges, 1, Scalar(0, 0, 255), 5);
-		for(Point p: twoEdges[0]) {
-			circle(blank, p, 5, Scalar(255, 0, 0), 10);
-		}
-		for(Point p: twoEdges[1]) {
-			circle(blank, p, 5, Scalar(0, 0, 255), 10);
-		}
-		imshow("compare edges", blank);
-		waitKey(0);
-		destroyWindow("compare edges");
-	}
-
-	// I don't understand why this needs to be a pointer. otherwise it thinks computeDistance() is a virtual fn.
-	// also don't know what's up w the create() function
-	// Ptr<HausdorffDistanceExtractor> h = createHausdorffDistanceExtractor();
-	// return h->computeDistance(edge, flippedEdge);
-
-	// return matchShapes(edge, other.edge, CONTOURS_MATCH_I3, 0);
 }
 
-// search through edges to find a match
+// search through remaining pieces and return best match for edge "edgeIndex" of piece "piece"
 PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 
 	PieceMatch bestMatch;
-	bool firstMatch = true;
 	double bestMatchScore;
+	bool firstMatch = true;
 
 	if(piece->edges[edgeIndex].isEdge) {
 		cout << "ERROR: calling match() on an edge piece" << endl;
-		bestMatch.piece = nullptr;
 		return bestMatch;
 	}
 
 	for(int i = 0; i < numPieces; i++) {
-		if(pieces[i].isConnected) continue; // skip if already connected
+		if(pieces[i].isConnected) continue;  // skip if already connected
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdge) continue; // skip if it's an edge
-			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
+			if(pieces[i].edges[j].isEdge) continue;  // skip if it's an edge
 
+			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
 
-			if(firstMatch) {
-				bestMatchScore = currentMatch.score;
-				bestMatch.match = currentMatch;
-				bestMatch.piece = &pieces[i];
-				bestMatch.edgeIndex = j;
-				firstMatch = false;
-			}
-			else if(currentMatch.score < bestMatchScore) { // low score is best
+			if(firstMatch || currentMatch.score < bestMatchScore) {  // low score is best
+				if(firstMatch) firstMatch = false;
 				bestMatchScore = currentMatch.score;
 				bestMatch.match = currentMatch;
 				bestMatch.piece = &pieces[i];
@@ -695,78 +626,63 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 		}
 	}
 
-	if(firstMatch) {
+	if(bestMatch.piece == nullptr) {
 		cout << "ERROR: remaining pieces are edges only." << endl;
-		bestMatch.piece = nullptr;
 		return bestMatch;
 	}
 
 	cout << "Piece " << piece->number << " matches edge " << bestMatch.edgeIndex << " of piece " << bestMatch.piece->number << endl;
-
 	return bestMatch;
 }
 
+// search through remaining pieces and return the piece that fits best in the spot with neighbors "leftPiece" and "upPiece"
 vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose) {
 
 	PieceMatch bestMatchLeft;
 	PieceMatch bestMatchUp;
-	bool firstMatch = true;
 	double bestMatchScore;
+	bool firstMatch = true;
 
 	if(leftPiece->edges[edgeIndexOfLeft].isEdge || upPiece->edges[edgeIndexOfUp].isEdge) {
 		cout << "ERROR: calling match() on an edge piece" << endl;
-		bestMatchLeft.piece = nullptr;
 		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 		return matches;
 	}
 
 	for(int i = 0; i < numPieces; i++) {
-		if(pieces[i].isConnected) continue; // skip if already connected
+		if(pieces[i].isConnected) continue;  // skip if already connected
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdge || pieces[i].edges[(j+1)%4].isEdge) continue; // skip if either connection is an edge
-			PieceMatch matchLeft;
-			matchLeft.match = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
-			PieceMatch matchUp;
-			matchUp.match = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
-			double score = matchLeft.match.score + matchUp.match.score;
-			cout << "Pieces " << leftPiece->number << " and " << upPiece->number <<
-					" score " << score << " against Piece " << pieces[i].number <<
-					" with right index " << (j+2)%4  << endl;
+			if(pieces[i].edges[j].isEdge || pieces[i].edges[(j+1)%4].isEdge) continue;  // skip if either connection is an edge
 
-			if(firstMatch) {
-				firstMatch = false;
+			EdgeMatch edgeMatchLeft = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
+			EdgeMatch edgeMatchUp = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
+			double score = edgeMatchLeft.score + edgeMatchUp.score;
+			cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " score " << score <<
+					" against Piece " << pieces[i].number << " with right index " << (j+2)%4  << endl;
+
+			if(firstMatch || score < bestMatchScore) {  // low score is best
+				if(firstMatch) firstMatch = false;
 				bestMatchScore = score;
-				bestMatchLeft = matchLeft;
-				bestMatchUp = matchUp;
+				bestMatchLeft.match = edgeMatchLeft;
+				bestMatchUp.match = edgeMatchUp;
 				bestMatchLeft.piece = &pieces[i];
+				bestMatchUp.piece = &pieces[i];
 				bestMatchLeft.edgeIndex = j;
-			}
-			else if(score < bestMatchScore) { // low score is best
-				bestMatchScore = score;
-				bestMatchLeft = matchLeft;
-				bestMatchUp = matchUp;
-				bestMatchLeft.piece = &pieces[i];
-				bestMatchLeft.edgeIndex = j;
+				bestMatchUp.edgeIndex = j;
 			}
 		}
 	}
 
-	if(firstMatch) {
-		cout << "ERROR: remaining pieces are edges only." << endl;
-		bestMatchLeft.piece = nullptr;
+	if(bestMatchLeft.piece == nullptr) {
+		cout << "ERROR: remaining pieces have no adjacent connections." << endl;
 		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 		return matches;
 	}
 
 	cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " match Piece "
 			<< bestMatchLeft.piece->number << " with right index " << bestMatchLeft.edgeIndex  << endl;
-
 	vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 	return matches;
-}
-
-void PuzzlePiece::print() {
-	cout << setw(4) << number;
 }
 
 double PuzzlePiece::rotationAngle() {
@@ -777,7 +693,6 @@ double PuzzlePiece::rotationAngle() {
 }
 
 // flips width and height if piece is rotated
-// may be able to deprecate this; only used once to detemine size of final puzzle
 double PuzzlePiece::width() {
 	if(rotationAngle() == 0 || rotationAngle() == 180) return core.width;
 	return core.height;
@@ -788,25 +703,20 @@ double PuzzlePiece::height() {
 	return core.width;
 }
 
-Point PuzzlePiece::center() {
-	return (core.tl() + core.br()) / 2;
-}
-
-// note: outline should be oriented counter clockwise bc outer contour. but, I don't think that guarantees sequential order.
 vector<Point> PuzzlePiece::constructEdge(int firstIdx, int secondIdx) {
 	if(secondIdx > firstIdx) {
-		vector<Point> temp(outline.begin() + firstIdx, outline.begin() + secondIdx + 1);
-		return temp;
+		vector<Point> edge(outline.begin() + firstIdx, outline.begin() + secondIdx + 1);
+		return edge;
 	} else {
-		vector<Point> temp(outline.begin() + firstIdx, outline.end());
-		temp.insert(temp.end(), outline.begin(), outline.begin() + secondIdx + 1);
-		return temp;
+		vector<Point> edge(outline.begin() + firstIdx, outline.end());
+		edge.insert(edge.end(), outline.begin(), outline.begin() + secondIdx + 1);
+		return edge;
 	}
 }
 
 // image, outline, core, edges
 void PuzzlePiece::scale(double factor) {
-	resize(img, img, Size(img.size[1] * factor, img.size[0] * factor));  // does this resize the Mat?
+	resize(img, img, Size(img.size[1] * factor, img.size[0] * factor));
 	for(Point &p: outline) { p *= factor; }
 	core = Rect(core.x * factor, core.y * factor, core.width * factor, core.height * factor);
 	for(Point &p: midpoints) { p *= factor; }
@@ -816,8 +726,8 @@ void PuzzlePiece::scale(double factor) {
 void PuzzlePiece::shift(Point s, Size newSize) {
 	double t_values[] = {1, 0, (double)s.x,
 										0, 1, (double)s.y};
-	Mat t_shift = Mat(2, 3, DataType<double>::type, t_values); // not sure about that data type
-	warpAffine(img, img, t_shift, newSize);  // may want to preserve the original image...
+	Mat t_shift = Mat(2, 3, DataType<double>::type, t_values);
+	warpAffine(img, img, t_shift, newSize);
 	for(Point &p: outline) { p += s; }
 	core = Rect(core.x + s.x, core.y + s.y, core.width, core.height);
 	for(Point &p: midpoints) { p += s; }
@@ -985,7 +895,7 @@ void Puzzle::assemble(bool verbose) {
 void Puzzle::print() {
 	for(int i = 0; i < rows; i++) {
 		for(int j = 0; j < columns; j++) {
-			completedPuzzle[i][j]->print();
+			cout << setw(4) << completedPuzzle[i][j]->number;
 		}
 		cout << endl;
 	}
@@ -1059,35 +969,6 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				waitKey(0);
 			}
 
-
-			/*
-			// scale the piece based on up and left neighbors
-			double scaleFactor = 1;
-			if(row == 0 && col == 0) { scaleFactor = 1; }
-			else if(row == 0) {
-				leftNeighbor = completedPuzzle[0][col-1];
-				scaleFactor = (double)(leftNeighbor->core.height) / cursor->core.height;
-			} else if(col == 0) {
-				upNeighbor = completedPuzzle[row-1][0];
-				scaleFactor = (double)(upNeighbor->core.width) / cursor->core.width;
-			} else {
-				leftNeighbor = completedPuzzle[row][0];  // all the way left
-				upNeighbor = completedPuzzle[0][col];  // all the way up
-				scaleFactor = (((double)(leftNeighbor->core.height) / cursor->core.height) + ((double)(upNeighbor->core.width) / cursor->core.width)) / 2;
-			}
-			cout << "Scale factor: " << scaleFactor << endl;
-			cursor->scale(scaleFactor);
-
-			if(verbose) {
-				cout << "scaled image" << endl;
-				imshow("temp", cursor->img);
-				waitKey(0);
-			}
-			*/
-
-			// should do in one step; I'm counting on no clipping after the rotation
-			// note: could do this check implicitly by waiting until this while loop exits to the other one
-
 			// calculate translation
 			// note: rotate before calculating the shift bc depends on the location of core midpoints
 			// upNeighbor and leftNeighbor are already calculated during rotation
@@ -1110,12 +991,6 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 				shift = (shiftUp + shiftLeft) / 2;
 			}
 
-//			if(upNeighbor != nullptr) {
-//				cout << "up nieghbor midpoint: " << upNeighbor->midpoints[2] << endl;
-//			}
-//			if(leftNeighbor != nullptr) {
-//				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1] << endl;
-//			}
 //			cout << "correction up: " << cursor->correctionShiftUp << endl;
 //			cout << "correction left: " << cursor->correctionShiftLeft << endl;
 
@@ -1197,16 +1072,4 @@ void Puzzle::display(bool verbose, bool checkRotation) {
 	waitKey(0);
 
 	destroyWindow("temp");
-}
-
-// should do something to avoid pieces of other edges that are attached, etc.
-// it's easy to match dark space. weight matching 1s and penalize non-matching 1s (xor).
-// note: if edge1 is large it can have parts cut off when comparing to smaller edges.
-//    and() is not affected but miss out on some xor() penalty. may be worth to fix.
-double edgeComparisonScore(Mat edge1, Mat edge2) {
-	Mat xor_mat;
-	Mat and_mat;
-	bitwise_xor(edge1, edge2, xor_mat);
-	bitwise_and(edge1, edge2, and_mat);
-	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
 }

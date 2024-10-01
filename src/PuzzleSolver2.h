@@ -20,7 +20,7 @@ public:
 	vector<Point> edge;
 	Mat edgeImg;
 	vector<Mat> rotEdgeImgs;
-	vector<double> rotEdgeImgDegrees;
+	vector<double> rotEdgeImgAngles;
 	Point rasterShift;  // amount edge center is shifted when made into raster image
 	bool isEdge = false;
 	double thetaCorrection;  // for flat edges
@@ -30,6 +30,7 @@ public:
 	static int pixelShift; // for edge comparison
 
 	void processEdge();
+	static double edgeComparisonScore(Mat edge1, Mat edge2);
 	static EdgeMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 };
 
@@ -67,11 +68,9 @@ public:
 	int downIndex();
 	int upIndex();
 	int leftIndex();
-	void print();
 	double rotationAngle();
 	double width();
 	double height();
-	Point center();  // unused?
 	vector<Point> constructEdge(int firstIdx, int secondIdx);
 	void scale(double factor);
 	void shift(Point s, Size newSize);
@@ -81,7 +80,7 @@ public:
 class PieceMatch {
 public:
 	EdgeMatch match;
-	PuzzlePiece *piece;
+	PuzzlePiece *piece = nullptr;
 	int edgeIndex;
 };
 
@@ -109,7 +108,5 @@ public:
 	void print();
 	void display(bool verbose=false, bool checkRotation=true);
 };
-
-double edgeComparisonScore(Mat edge1, Mat edge2);
 
 #endif /* PUZZLESOLVER2_H_ */
