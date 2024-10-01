@@ -87,6 +87,7 @@ void EdgeOfPiece::processEdge() {
 	if(avgDist < 10) {
 		rotCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
+		cout << "processEdge shift correction: " << shiftCorrection << endl;
 		isEdge = true;
 		return;
 	}
@@ -726,13 +727,13 @@ void PuzzlePiece::scale(double factor) {
 	for(Point &p: midpoints) { p *= factor; }
 }
 
-// image, outline, core, edges
-void PuzzlePiece::shift(Point s, Size newSize) {
-	double t_values[] = {1, 0, (double)s.x,
-										0, 1, (double)s.y};
-	Mat t_shift = Mat(2, 3, DataType<double>::type, t_values);
-	warpAffine(img, img, t_shift, newSize);
-	for(Point &p: outline) { p += s; }
+// shift midpoints only
+void PuzzlePiece::shift(Point s) {
+	// double t_values[] = {1, 0, (double)s.x,
+	// 									0, 1, (double)s.y};
+	// Mat t_shift = Mat(2, 3, DataType<double>::type, t_values);
+	// warpAffine(img, img, t_shift, newSize);
+	// for(Point &p: outline) { p += s; }
 	core = Rect(core.x + s.x, core.y + s.y, core.width, core.height);
 	for(Point &p: midpoints) { p += s; }
 }
@@ -972,15 +973,7 @@ void Puzzle::display(bool verbose) {
 				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
-
-			// translate
-			cursor->shift(shift, completedPuzzleImg.size());
-			if(verbose) {
-				cout << "Correction shift: " << shift << endl;
-				cout << "Show completed transformation:" << endl;
-				imshow("pieces", cursor->img);
-				waitKey(0);
-			}
+			cursor->shift(shift);  // translate the midpoints and core
 
 			if(verbose) {  // debug: draw midpoints and target locations
 				blueDots.push_back(cursor->midpoints[0]);
@@ -993,7 +986,7 @@ void Puzzle::display(bool verbose) {
 				}
 			}
 
-			// copy the pixels within the piece outline to the final image
+			// create mask shaped like the piece
 			Mat mask = Mat::zeros(cursor->img.size(), cursor->img.type());
 			vector<vector<Point>> outline_vec = {cursor->outline};
 			drawContours(mask, outline_vec, -1, Scalar(255, 255, 255), -1);  // thickness=-1 fills in the contour
@@ -1004,7 +997,26 @@ void Puzzle::display(bool verbose) {
 				destroyWindow("pieces");
 			}
 
-			cursor->img.copyTo(completedPuzzleImg, mask);
+			// copy piece to final puzzle image. clip target region so it doesn't go off edge of image.
+			Rect outlineBox = boundingRect(cursor->outline);
+			Rect destinationBox = Rect(outlineBox.tl() + shift, outlineBox.size());
+			cout << "Destination box: " << destinationBox << endl;
+			Rect clippedDestBox = destinationBox & Rect({}, completedPuzzleImg.size());
+			cout << "clipped: " << clippedDestBox << endl;
+			Rect clippedOutlineBox = Rect(destinationBox.tl() - shift, clippedDestBox.size());
+			cout << "clipped outline: " << clippedOutlineBox << endl;
+
+//			int xClipLeft = abs(min(0, destinationBox.x));
+//			int xClipRight = abs(min(0, completedPuzzleImg.cols - (destinationBox.x + destinationBox.width)));
+//			int yClipTop = abs(min(0, destinationBox.y));
+//			int yClipBottom = abs(min(0, completedPuzzleImg.rows - (destinationBox.y + destinationBox.height)));
+//			// check if the piece is completely off the screen
+//			if(xClipLeft >= outlineBox.width || xClipRight >= outlineBox.width || yClipTop >= outlineBox.height || yClipBottom >= outlineBox.width) {
+//				continue;
+//			}
+//			Rect clippedOutlineBox = Rect(outlineBox.x + xClipLeft, outlineBox.y + yClipTop, outlineBox.width - xClipLeft - xClipRight, outlineBox.height - yClipTop - yClipBottom);
+//			Rect clippedDestBox = Rect(Point(destinationBox.x + xClipLeft, destinationBox.y + yClipTop), clippedOutlineBox.size());
+			cursor->img(clippedOutlineBox).copyTo(completedPuzzleImg(clippedDestBox), mask(clippedOutlineBox));
 			if(verbose) {
 				cout << "Show puzzle with new piece added:" << endl;
 				namedWindow("completed puzzle");
@@ -1022,12 +1034,12 @@ void Puzzle::display(bool verbose) {
 	}
 
 	// show completed puzzle
-	cout << "Enter (integer) degrees of counterclockwise rotation" << endl;
 	imshow("completed puzzle", completedPuzzleImg);
 	waitKey(0);
 
 	// rotate the entire puzzle based on user input
 	string fullPuzzleRotStr;
+	cout << "Enter (integer) degrees of counterclockwise rotation" << endl;
 	cin >> fullPuzzleRotStr;
 	int fullPuzzleRot = stoi(fullPuzzleRotStr);
 	Mat t_puzz;

@@ -74,7 +74,7 @@ public:
 	Point center();
 	vector<Point> constructEdge(int firstIdx, int secondIdx);
 	void scale(double factor);
-	void shift(Point s, Size newSize);
+	void shift(Point s);
 	void rotate(Point rotationCenter, double theta);
 	void cycleMidpoints();
 };
