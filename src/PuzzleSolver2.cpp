@@ -15,7 +15,7 @@ int main() {
 
 	bool process_verbose = false;
 	bool match_verbose = false;
-	bool display_verbose = true;
+	bool display_verbose = false;
 
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
@@ -101,23 +101,33 @@ void EdgeOfPiece::processEdge() {
 
 	// create raster images of the edge
 	Rect edgeBound = boundingRect(edge);
-	edgeImg = Mat::zeros((edgeBound.height + 2*EdgeOfPiece::edgeImgBuffer) / EdgeOfPiece::edgeShrinkFactor, (edgeBound.width + 2*EdgeOfPiece::edgeImgBuffer) / EdgeOfPiece::edgeShrinkFactor, CV_8UC1);
-	rasterShift = (- Point(edgeBound.x, edgeBound.y) + Point(EdgeOfPiece::edgeImgBuffer, EdgeOfPiece::edgeImgBuffer)) / EdgeOfPiece::edgeShrinkFactor;
+	edgeImg = Mat::zeros(edgeBound.height / EdgeOfPiece::edgeShrinkFactor, edgeBound.width / EdgeOfPiece::edgeShrinkFactor, CV_8UC1);
+	rasterShift = - Point(edgeBound.x, edgeBound.y) / EdgeOfPiece::edgeShrinkFactor;
+	vector<Point> rasterEdge;
 	for(Point p: edge) {
-		Point circleLoc = p / EdgeOfPiece::edgeShrinkFactor + rasterShift;
-		circle(edgeImg, circleLoc, EdgeOfPiece::edgeImgBuffer / EdgeOfPiece::edgeShrinkFactor, 255, -1);
+		rasterEdge.push_back(p / EdgeOfPiece::edgeShrinkFactor + rasterShift);
 	}
+	rasterEdge.push_back(Point(0, edgeImg.rows));
+	rasterEdge.push_back(Point(edgeImg.cols, edgeImg.rows));
+	vector<vector<Point>> rasterEdgeVec;
+	rasterEdgeVec.push_back(rasterEdge);
+	drawContours(edgeImg, rasterEdgeVec, -1, 255, -1);  // thickness=-1 fills in the contour
+
+	// namedWindow("filled edge");
+	// imshow("filled edge", edgeImg);
+	// waitKey(0);
+	// destroyWindow("filled edge");
+
 	// raster images of rotated edges
 	for(int theta = -4; theta <= 4; theta +=2) {
 		rotEdgeImgAngles.push_back(theta);
 	}
 	Point imgCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
-	Point rotationCenter = midpoint / EdgeOfPiece::edgeShrinkFactor + rasterShift;
 	for(double deg: rotEdgeImgAngles) {
 		Mat rotatedEdgeImg;
 		Mat rot1 = getRotationMatrix2D(imgCenter, 180, 1);
 		warpAffine(edgeImg, rotatedEdgeImg, rot1, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
-		Mat rot2 = getRotationMatrix2D(rotationCenter, deg, 1);
+		Mat rot2 = getRotationMatrix2D(rasterShift, deg, 1);
 		warpAffine(rotatedEdgeImg, rotatedEdgeImg, rot2, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
 		rotEdgeImgs.push_back(rotatedEdgeImg);
 	}
@@ -514,11 +524,12 @@ int PuzzlePiece::leftIndex() {
 }
 
 double EdgeOfPiece::edgeComparisonScore(Mat edge1, Mat edge2) {
-	Mat xor_mat;
+	Mat nor_mat;
 	Mat and_mat;
-	bitwise_xor(edge1, edge2, xor_mat);
+	bitwise_or(edge1, edge2, nor_mat);
+	bitwise_not(nor_mat, nor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	return (sum(xor_mat)[0] - 2 * sum(and_mat)[0]) / 255;
+	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255 / (edge1.rows * edge1.cols);
 }
 
 // lower score is better.
