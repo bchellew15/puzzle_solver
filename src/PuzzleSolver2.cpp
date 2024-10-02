@@ -113,11 +113,6 @@ void EdgeOfPiece::processEdge() {
 	rasterEdgeVec.push_back(rasterEdge);
 	drawContours(edgeImg, rasterEdgeVec, -1, 255, -1);  // thickness=-1 fills in the contour
 
-	// namedWindow("filled edge");
-	// imshow("filled edge", edgeImg);
-	// waitKey(0);
-	// destroyWindow("filled edge");
-
 	// raster images of rotated edges
 	for(int theta = -4; theta <= 4; theta +=2) {
 		rotEdgeImgAngles.push_back(theta);
@@ -532,6 +527,13 @@ double EdgeOfPiece::edgeComparisonScore(Mat edge1, Mat edge2) {
 	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255 / (edge1.rows * edge1.cols);
 }
 
+// rename this
+double EdgeOfPiece::edgeComparisonScore2(Mat edge) {
+	Mat not_mat;
+	bitwise_not(edge, not_mat);
+	return sum(not_mat)[0] / 255;
+}
+
 // lower score is better.
 // "shift" and "theta" are corrections for edge 2.
 // edge2 images are rotated ~180 degrees for comparison.
@@ -582,6 +584,17 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 				Mat e2 = rotEdgeImg.rowRange(e2RowRange).colRange(e2ColRange);
 
 				double score = edgeComparisonScore(e1, e2);
+//				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+//					Range e2CutOffRows = Range(0, h * pixelShift);
+//					Mat e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
+//					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
+//					score += edgeComparisonScore2(e2CutOff);
+//				} else {
+//					Range e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
+//					Mat e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
+//					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
+//					score += edgeComparisonScore2(e1CutOff);
+//				}
 
 				if(firstMatch || score < minScore) {
 					if(firstMatch) firstMatch = false;
@@ -605,6 +618,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 		Mat channels[3] = {best_e1, Mat::zeros(best_e1.size(), CV_8UC1), best_e2};
 		merge(channels, 3, bothEdges);
 
+		cout << "score: " << minScore << endl;
 		namedWindow("edgeMatch");
 		imshow("edgeMatch", bothEdges);
 		waitKey(0);
