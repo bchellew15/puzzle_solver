@@ -411,6 +411,7 @@ void PuzzlePiece::process(bool verbose) {
 	for(int i = 0; i < 4; i++) {
 		edges[i].processEdge();
 	}
+	isEdge = edges[0].isEdge + edges[1].isEdge + edges[2].isEdge + edges[3].isEdge;
 
 	if(verbose) {
 			// show the shifted / rotated edges
@@ -604,7 +605,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 }
 
 // search through remaining pieces and return best match for edge "edgeIndex" of piece "piece"
-PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
+PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool verbose) {
 
 	PieceMatch bestMatch;
 	double bestMatchScore;
@@ -617,6 +618,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool verbose) {
 
 	for(int i = 0; i < numPieces; i++) {
 		if(pieces[i].isConnected) continue;  // skip if already connected
+		if(edgesOnly && !pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdge) continue;  // skip if it's an edge
 
@@ -822,7 +824,7 @@ void Puzzle::assemble(bool verbose) {
 	cout << "Constructing top edge" << endl;
 	while(!cursor->edges[cursor->rightIndex].isEdge && completedPuzzle[0].size() < numPieces) {
 
-		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, verbose);
+		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, true, verbose);
 		cursor = matchingPiece.piece;
 		if(cursor == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;
@@ -856,7 +858,7 @@ void Puzzle::assemble(bool verbose) {
 			return;
 		}
 
-		PieceMatch matchingPiece = match(cursor, cursor->downIndex(), verbose);
+		PieceMatch matchingPiece = match(cursor, cursor->downIndex(), true, verbose);
 		cursor = matchingPiece.piece;
 		if(cursor == nullptr) {
 			cout << "ERROR: no valid matches found" << endl;

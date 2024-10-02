@@ -45,9 +45,10 @@ public:
 	Rect core;
 	vector<Point> midpoints = vector<Point>(4);
 	int number;
-	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
 	int rightIndex; //index of edge pointing towards rightNeighbor.
+	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
 	bool isConnected = false; // whether this piece has been connected to the puzzle
+	bool isEdge;
 	static double scalingLength;
 	static double avgBrightness;
 	Point correctionShiftLeft;
@@ -102,7 +103,7 @@ public:
 	// search through all the pieces until it finds a match
 	// returns a pointer the piece with matching index
 	// if no match, returns NULL
-	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool verbose=false); //finds the matching piece
+	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool verbose=false); //finds the matching piece
 	vector<PieceMatch> match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
 
 	void process(bool verbose=false);
