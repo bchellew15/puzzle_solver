@@ -15,7 +15,7 @@ int main() {
 
 	bool process_verbose = false;
 	bool match_verbose = false;
-	bool display_verbose = false;
+	bool display_verbose = true;
 
 	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
@@ -111,11 +111,14 @@ void EdgeOfPiece::processEdge() {
 	for(int theta = -4; theta <= 4; theta +=2) {
 		rotEdgeImgAngles.push_back(theta);
 	}
-	Point rotationCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+	Point imgCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+	Point rotationCenter = midpoint / EdgeOfPiece::edgeShrinkFactor + rasterShift;
 	for(double deg: rotEdgeImgAngles) {
 		Mat rotatedEdgeImg;
-		Mat rot_t = getRotationMatrix2D(rotationCenter, deg+180, 1);
-		warpAffine(edgeImg, rotatedEdgeImg, rot_t, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
+		Mat rot1 = getRotationMatrix2D(imgCenter, 180, 1);
+		warpAffine(edgeImg, rotatedEdgeImg, rot1, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
+		Mat rot2 = getRotationMatrix2D(rotationCenter, deg, 1);
+		warpAffine(rotatedEdgeImg, rotatedEdgeImg, rot2, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
 		rotEdgeImgs.push_back(rotatedEdgeImg);
 	}
 }
@@ -387,13 +390,13 @@ void PuzzlePiece::process(bool verbose) {
 
 	// rotate and translate the edges for easier processing and comparison
 	// translate: line up core midpoints with the origin
-	midpoints[0] = core.tl() + Point(core.width/2, 0);
-	midpoints[1] = core.tl() + Point(core.width, core.height/2);
-	midpoints[2] = core.tl() + Point(core.width/2, core.height);
-	midpoints[3] = core.tl() + Point(0, core.height/2);
+	edges[0].midpoint = core.tl() + Point(core.width/2, 0);
+	edges[1].midpoint = core.tl() + Point(core.width, core.height/2);
+	edges[2].midpoint = core.tl() + Point(core.width/2, core.height);
+	edges[3].midpoint = core.tl() + Point(0, core.height/2);
 	for(int i = 0; i < 4; i++) {
 		for(Point &p: edges[i].edge) {
-			p -= midpoints[i];
+			p -= edges[i].midpoint;
 		}
 	}
 	// rotate edges
@@ -733,7 +736,7 @@ void PuzzlePiece::scale(double factor) {
 	resize(img, img, Size(img.size[1] * factor, img.size[0] * factor));
 	for(Point &p: outline) { p *= factor; }
 	core = Rect(core.x * factor, core.y * factor, core.width * factor, core.height * factor);
-	for(Point &p: midpoints) { p *= factor; }
+	for(EdgeOfPiece &e: edges) { e.midpoint *= factor; }
 }
 
 // shift midpoints only
@@ -744,7 +747,7 @@ void PuzzlePiece::shift(Point s) {
 	// warpAffine(img, img, t_shift, newSize);
 	// for(Point &p: outline) { p += s; }
 	core = Rect(core.x + s.x, core.y + s.y, core.width, core.height);
-	for(Point &p: midpoints) { p += s; }
+	for(EdgeOfPiece &e: edges) { e.midpoint += s; }
 }
 
 // different behavior for theta = 90, 180, 270
@@ -752,7 +755,7 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 	Mat t = getRotationMatrix2D(rotationCenter, theta, 1);
 	warpAffine(img, img, t, img.size());
 	for(Point &p: outline) { p = rotatePoint(p, t); }
-	for(Point &p: midpoints) { p = rotatePoint(p, t); }
+	for(EdgeOfPiece &e: edges) { e.midpoint = rotatePoint(e.midpoint, t); }
 
 	// rotate core and midpoints for big rotations
 	if(theta == 90) {
@@ -768,27 +771,23 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 		cycleMidpoints(); cycleMidpoints(); cycleMidpoints();
 	}
 
-	// only for small corrections
+	// only for small corrections, and assuming rotation about center of piece
 	else if(theta < 90) {
-		// rotate shift corrections
-		Mat t_zero = getRotationMatrix2D(Point(0, 0), theta, 1);
-		correctionShiftLeft = rotatePoint(correctionShiftLeft, t_zero);
-		correctionShiftUp = rotatePoint(correctionShiftUp, t_zero);
 		// rotate edge corrections
 		for(EdgeOfPiece &e: edges) {
 			if(e.isEdge) {
-				e.shiftCorrection *= cos(theta * 3.14 / 180);
+				e.shiftCorrection -= norm(center() - e.midpoint) * (1 - cos(theta * 3.14 / 180));
 			}
 		}
 	}
 }
 
 void PuzzlePiece::cycleMidpoints() {
-	Point temp = midpoints[0];
-	midpoints[0] = midpoints[1];
-	midpoints[1] = midpoints[2];
-	midpoints[2] = midpoints[3];
-	midpoints[3] = temp;
+	Point temp = edges[0].midpoint;
+	edges[0].midpoint = edges[1].midpoint;
+	edges[1].midpoint = edges[2].midpoint;
+	edges[2].midpoint = edges[3].midpoint;
+	edges[3].midpoint = temp;
 }
 
 Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
@@ -975,41 +974,41 @@ void Puzzle::display(bool verbose) {
 			if(row == 0 && col == 0) {  // top left corner
 				shift = -cursor->core.tl() + Point(cursor->edges[cursor->leftIndex()].shiftCorrection, cursor->edges[cursor->upIndex()].shiftCorrection);
 			}  else if(col == 0) {  // left edge
-				int shiftX = -cursor->midpoints[3].x + cursor->edges[cursor->leftIndex()].shiftCorrection;
-				int shiftY = upNeighbor->midpoints[2].y - cursor->midpoints[0].y + cursor->correctionShiftUp.y;
+				int shiftX = -cursor->edges[3].midpoint.x + cursor->edges[cursor->leftIndex()].shiftCorrection;
+				int shiftY = upNeighbor->edges[2].midpoint.y - cursor->edges[0].midpoint.y + cursor->correctionShiftUp.y;
 				shift = Point(shiftX, shiftY);
 				cout << "left edge shift corrections: " << endl;
 				cout << "x edge: " << cursor->edges[cursor->leftIndex()].shiftCorrection << endl;
 				cout << "y: " << cursor->correctionShiftUp.y << endl;
-				cout << "cursor midpoint x: " << -cursor->midpoints[3].x << endl;
-				cout << "up neighbor midpoint: " << upNeighbor->midpoints[2].y << endl;
-				cout << "midpoint y: " << cursor->midpoints[0].y << endl;
+				cout << "cursor midpoint x: " << -cursor->edges[3].midpoint.x << endl;
+				cout << "up neighbor midpoint: " << upNeighbor->edges[2].midpoint.y << endl;
+				cout << "midpoint y: " << cursor->edges[0].midpoint.y << endl;
 			} else if(row == 0) {  // top edge
-				int shiftX = leftNeighbor->midpoints[1].x - cursor->midpoints[3].x + cursor->correctionShiftLeft.x;
-				int shiftY = -cursor->midpoints[0].y + cursor->edges[cursor->upIndex()].shiftCorrection;
+				int shiftX = leftNeighbor->edges[1].midpoint.x - cursor->edges[3].midpoint.x + cursor->correctionShiftLeft.x;
+				int shiftY = -cursor->edges[0].midpoint.y + cursor->edges[cursor->upIndex()].shiftCorrection;
 				shift = Point(shiftX, shiftY);
 				cout << "top edge shift corrections: " << endl;
 				cout << "x correction: " << cursor->correctionShiftLeft.x << endl;
 				cout << "y correction: " << cursor->edges[cursor->upIndex()].shiftCorrection << endl;
-				cout << "cursor midpoint y: " << cursor->midpoints[0].y << endl;
-				cout << "left neighbor midpoint: " << leftNeighbor->midpoints[1].x << endl;
-				cout << "cursor midpoint: " << cursor->midpoints[3].x << endl;
+				cout << "cursor midpoint y: " << cursor->edges[0].midpoint.y << endl;
+				cout << "left neighbor midpoint: " << leftNeighbor->edges[1].midpoint.x << endl;
+				cout << "cursor midpoint: " << cursor->edges[3].midpoint.x << endl;
 			} else {  // most pieces
-				Point shiftUp = upNeighbor->midpoints[2] - cursor->midpoints[0] + cursor->correctionShiftUp;
-				Point shiftLeft = leftNeighbor->midpoints[1] - cursor->midpoints[3] + cursor->correctionShiftLeft;
+				Point shiftUp = upNeighbor->edges[2].midpoint - cursor->edges[0].midpoint + cursor->correctionShiftUp;
+				Point shiftLeft = leftNeighbor->edges[1].midpoint - cursor->edges[3].midpoint + cursor->correctionShiftLeft;
 				shift = (shiftUp + shiftLeft) / 2;
 			}
 			cursor->shift(shift);  // translate the midpoints and core
 			cout << "final shift: " << shift << endl; // debug
 
 			if(verbose) {  // debug: draw midpoints and target locations
-				blueDots.push_back(cursor->midpoints[0]);
-				blueDots.push_back(cursor->midpoints[3]);
+				blueDots.push_back(cursor->edges[0].midpoint);
+				blueDots.push_back(cursor->edges[3].midpoint);
 				if(upNeighbor != nullptr) {
-					redDots.push_back(upNeighbor->midpoints[2] + cursor->correctionShiftUp);
+					redDots.push_back(upNeighbor->edges[2].midpoint + cursor->correctionShiftUp);
 				}
 				if(leftNeighbor != nullptr) {
-					redDots.push_back(leftNeighbor->midpoints[1] + cursor->correctionShiftLeft);
+					redDots.push_back(leftNeighbor->edges[1].midpoint + cursor->correctionShiftLeft);
 				}
 			}
 
