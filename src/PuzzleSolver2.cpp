@@ -645,7 +645,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 }
 
 // search through remaining pieces and return the piece that fits best in the spot with neighbors "leftPiece" and "upPiece"
-vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose) {
+vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool noEdges, bool verbose) {
 
 	PieceMatch bestMatchLeft;
 	PieceMatch bestMatchUp;
@@ -660,6 +660,7 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 
 	for(int i = 0; i < numPieces; i++) {
 		if(pieces[i].isConnected) continue;  // skip if already connected
+		if(noEdges && pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdge || pieces[i].edges[(j+1)%4].isEdge) continue;  // skip if either connection is an edge
 
@@ -879,7 +880,8 @@ void Puzzle::assemble(bool verbose) {
 		for(int j = 1; j < columns; j++) {
 			PuzzlePiece *leftPiece = completedPuzzle[i][j-1];
 			PuzzlePiece *upPiece = completedPuzzle[i-1][j];
-			vector<PieceMatch> matchingPieces = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), verbose);
+			bool noEdges = i < rows - 1 &&  j < columns - 1;
+			vector<PieceMatch> matchingPieces = match2(leftPiece, leftPiece->rightIndex, upPiece, upPiece->downIndex(), noEdges, verbose);
 			cursor=matchingPieces[0].piece;
 			if(matchingPieces[0].piece == nullptr || matchingPieces[1].piece == nullptr) {
 				cout << "ERROR: no match found" << endl;

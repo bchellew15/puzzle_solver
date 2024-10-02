@@ -104,7 +104,7 @@ public:
 	// returns a pointer the piece with matching index
 	// if no match, returns NULL
 	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool verbose=false); //finds the matching piece
-	vector<PieceMatch> match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool verbose);
+	vector<PieceMatch> match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool noEdges, bool verbose);
 
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);
