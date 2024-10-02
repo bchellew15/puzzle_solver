@@ -18,6 +18,7 @@ public:
 class EdgeOfPiece {
 public:
 	vector<Point> edge;
+	Point midpoint;
 	Mat edgeImg;
 	vector<Mat> rotEdgeImgs;
 	vector<double> rotEdgeImgAngles;
@@ -43,7 +44,6 @@ public:
 	vector<EdgeOfPiece> edges = vector<EdgeOfPiece>(4);  //edges in order: top, right, bottom, left
 	vector<Point> outline;
 	Rect core;
-	vector<Point> midpoints = vector<Point>(4);
 	int number;
 	int rightIndex; //index of edge pointing towards rightNeighbor.
 	double theta = 0; // counterclockwise rotation required for the image of this piece. unused?
