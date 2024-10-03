@@ -32,7 +32,7 @@ public:
 
 	void processEdge();
 	static double edgeComparisonScore(Mat edge1, Mat edge2);
-	static double edgeComparisonScore2(Mat edge);
+	static double edgeComparisonScore2(Mat edge, bool penalizeZeros);
 	static EdgeMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
 };
 
