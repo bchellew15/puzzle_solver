@@ -101,11 +101,11 @@ void EdgeOfPiece::processEdge() {
 
 	// create raster images of the edge
 	Rect edgeBound = boundingRect(edge);
-	edgeImg = Mat::zeros(edgeBound.height / EdgeOfPiece::edgeShrinkFactor, edgeBound.width / EdgeOfPiece::edgeShrinkFactor, CV_8UC1);
-	rasterShift = - Point(edgeBound.x, edgeBound.y) / EdgeOfPiece::edgeShrinkFactor;
+	edgeImg = Mat::zeros(edgeBound.height / edgeShrinkFactor, edgeBound.width / edgeShrinkFactor, CV_8UC1);
+	rasterShift = - Point(edgeBound.x, edgeBound.y) / edgeShrinkFactor;
 	vector<Point> rasterEdge;
 	for(Point p: edge) {
-		rasterEdge.push_back(p / EdgeOfPiece::edgeShrinkFactor + rasterShift);
+		rasterEdge.push_back(p / edgeShrinkFactor + rasterShift);
 	}
 	rasterEdge.push_back(Point(0, edgeImg.rows));
 	rasterEdge.push_back(Point(edgeImg.cols, edgeImg.rows));
@@ -120,9 +120,9 @@ void EdgeOfPiece::processEdge() {
 	Point imgCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
 	for(double deg: rotEdgeImgAngles) {
 		Mat rotatedEdgeImg;
-		Mat rot1 = getRotationMatrix2D(imgCenter, 180, 1);
+		Mat rot1 = getRotationMatrix2D(rasterShift, deg, 1);
 		warpAffine(edgeImg, rotatedEdgeImg, rot1, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
-		Mat rot2 = getRotationMatrix2D(rasterShift, deg, 1);
+		Mat rot2 = getRotationMatrix2D(imgCenter, 180, 1);
 		warpAffine(rotatedEdgeImg, rotatedEdgeImg, rot2, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
 		rotEdgeImgs.push_back(rotatedEdgeImg);
 	}
@@ -620,10 +620,10 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					if(firstMatch) firstMatch = false;
 					minScore = score;
 					bestTheta = theta;
-					// (1) apply edge2 raster shift, but fliped across center row bc edge2 is rotated 180 degrees.
+					// (1) apply edge2 raster shift, but rotated about the center bc edge2 is rotated 180 degrees.
 					// (2) apply the shift calculated in this function
 					// (3) apply reverse of edge1 raster shift
-					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
+					bestShift = Point(rotEdgeImg.cols - edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
 					bestE1RowRange = e1RowRange;  // for display
 					bestE1ColRange = e1ColRange;
 					bestE2RowRange = e2RowRange;
@@ -954,7 +954,7 @@ void Puzzle::assemble(bool verbose) {
 			completedPuzzle[i].push_back(cursor);
 			cursor->isConnected = true;
 			cursor->rightIndex = PuzzlePiece::oppIndex(matchingPieces[0].edgeIndex);
-			cursor->correctionShiftLeft = Point(-matchingPieces[0].match.shift.y, matchingPieces[0].match.shift.x);  // // rotate clockwise 90deg
+			cursor->correctionShiftLeft = Point(-matchingPieces[0].match.shift.y, matchingPieces[0].match.shift.x); // rotate clockwise 90deg
 			cursor->correctionShiftUp = -matchingPieces[1].match.shift;  // rotate 180 degrees
 			cursor->correctionAngleLeft = matchingPieces[0].match.theta;
 			cursor->correctionAngleUp = matchingPieces[1].match.theta;
@@ -1059,7 +1059,8 @@ void Puzzle::display(bool verbose) {
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->edges[2].midpoint - cursor->edges[0].midpoint + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->edges[1].midpoint - cursor->edges[3].midpoint + cursor->correctionShiftLeft;
-				shift = (shiftUp + shiftLeft) / 2;
+				shift = shiftLeft; // TEMP
+				// shift = (shiftUp + shiftLeft) / 2;
 			}
 			cursor->shift(shift);  // translate the midpoints and core
 			cout << "final shift: " << shift << endl; // debug
