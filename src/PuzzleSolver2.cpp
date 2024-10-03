@@ -644,11 +644,13 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 		if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
 			Rect edge1Box = Rect(0, bestE2RowRange.start, windowWidth, minHeight);
 			bestE1.copyTo(channel1(edge1Box));
+			rectangle(channel1, Point(0, bestE2RowRange.end), Point(windowWidth, channel1.rows), 255, -1);
 			bestE2.copyTo(channel3(Rect({}, bestE2.size())));
 		} else {
 			bestE1.copyTo(channel1(Rect({}, bestE1.size())));
 			Rect edge2Box = Rect(0, bestE1RowRange.start, windowWidth, minHeight);
 			bestE2.copyTo(channel3(edge2Box));
+			rectangle(channel3, Point(0, 0), Point(windowWidth, bestE1RowRange.start), 255, -1);
 		}
 		Mat bothEdges;
 		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
