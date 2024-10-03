@@ -524,14 +524,18 @@ double EdgeOfPiece::edgeComparisonScore(Mat edge1, Mat edge2) {
 	bitwise_or(edge1, edge2, nor_mat);
 	bitwise_not(nor_mat, nor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255 / (edge1.rows * edge1.cols);
+	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255; // / (edge1.rows * edge1.cols);
 }
 
 // rename this
-double EdgeOfPiece::edgeComparisonScore2(Mat edge) {
-	Mat not_mat;
-	bitwise_not(edge, not_mat);
-	return sum(not_mat)[0] / 255;
+double EdgeOfPiece::edgeComparisonScore2(Mat edge, bool penalizeZeros) {
+	if(penalizeZeros) {
+		Mat not_mat;
+		bitwise_not(edge, not_mat);
+		return sum(not_mat)[0] / 255;
+	} else {
+		return sum(edge)[0] / 255;
+	}
 }
 
 // lower score is better.
@@ -550,8 +554,12 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	double minScore;
 	int bestTheta;
 	Point bestShift;
-	Mat best_e1; // for display only
-	Mat best_e2; // for display only
+	Range bestE1RowRange; // for display only
+	Range bestE1ColRange;
+	Range bestE2RowRange;
+	Range bestE2ColRange;
+	Mat bestE1; // for display only
+	Mat bestE2;
 	bool firstMatch = true;
 
 	for(int i = 0; i < edge2.rotEdgeImgAngles.size(); i++) {
@@ -580,21 +588,33 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					e2ColRange = Range(minWidth/10, minWidth/10 + windowWidth);
 					e1ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				}
-				Mat e1 = edge1.edgeImg.rowRange(e1RowRange).colRange(e1ColRange);
-				Mat e2 = rotEdgeImg.rowRange(e2RowRange).colRange(e2ColRange);
+				Mat e1 = edge1.edgeImg.colRange(e1ColRange);
+				Mat e2 = rotEdgeImg.colRange(e2ColRange);
 
-				double score = edgeComparisonScore(e1, e2);
-//				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
-//					Range e2CutOffRows = Range(0, h * pixelShift);
-//					Mat e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
-//					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
-//					score += edgeComparisonScore2(e2CutOff);
-//				} else {
-//					Range e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
-//					Mat e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
-//					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
-//					score += edgeComparisonScore2(e1CutOff);
-//				}
+				double score = edgeComparisonScore(e1.rowRange(e1RowRange), e2.rowRange(e2RowRange));
+				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+					// top cutoff, penalize dark pixels
+					Range e2CutOffRows = Range(0, h * pixelShift);
+					Mat e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
+					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
+					score += edgeComparisonScore2(e2CutOff, true);
+
+					// bottom cutoff, penalize white pixels
+					e2CutOffRows = Range(h * pixelShift + minHeight, edge2.edgeImg.rows);
+					e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
+					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
+					score += edgeComparisonScore2(e2CutOff, false);
+				} else {
+					Range e1CutOffRows = Range(0, h * pixelShift);
+					Mat e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
+					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
+					score += edgeComparisonScore2(e1CutOff, true);
+
+					e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
+					e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
+					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
+					score += edgeComparisonScore2(e1CutOff, false);
+				}
 
 				if(firstMatch || score < minScore) {
 					if(firstMatch) firstMatch = false;
@@ -604,8 +624,12 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					// (2) apply the shift calculated in this function
 					// (3) apply reverse of edge1 raster shift
 					bestShift = Point(edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
-					best_e1 = e1;  // for display
-					best_e2 = e2;
+					bestE1RowRange = e1RowRange;  // for display
+					bestE1ColRange = e1ColRange;
+					bestE2RowRange = e2RowRange;
+					bestE2ColRange = e2ColRange;
+					bestE1 = e1;
+					bestE2 = e2;
 				}
 			}
 		}
@@ -614,8 +638,20 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	if(verbose) {
 		cout << "best theta: " << bestTheta << endl;
 
+		Mat channel1 = Mat::zeros(maxHeight, windowWidth, CV_8UC1);
+		Mat channel3 = Mat::zeros(maxHeight, windowWidth, CV_8UC1);
+		// might be possible to do this without the if...
+		if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+			Rect edge1Box = Rect(0, bestE2RowRange.start, windowWidth, minHeight);
+			bestE1.copyTo(channel1(edge1Box));
+			bestE2.copyTo(channel3(Rect({}, bestE2.size())));
+		} else {
+			bestE1.copyTo(channel1(Rect({}, bestE1.size())));
+			Rect edge2Box = Rect(0, bestE1RowRange.start, windowWidth, minHeight);
+			bestE2.copyTo(channel3(edge2Box));
+		}
 		Mat bothEdges;
-		Mat channels[3] = {best_e1, Mat::zeros(best_e1.size(), CV_8UC1), best_e2};
+		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
 		merge(channels, 3, bothEdges);
 
 		cout << "score: " << minScore << endl;
