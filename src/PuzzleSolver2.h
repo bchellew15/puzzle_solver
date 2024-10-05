@@ -115,4 +115,10 @@ public:
 
 Point rotatePoint(Point p, Mat t);
 
+class Test {
+public:
+static void testAllEdgePairs(Puzzle myPuzzle);
+static void displayEdgeMatches(Puzzle myPuzzle);
+};
+
 #endif /* PUZZLESOLVER2_H_ */
