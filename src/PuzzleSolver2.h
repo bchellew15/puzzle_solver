@@ -117,7 +117,7 @@ Point rotatePoint(Point p, Mat t);
 
 class Test {
 public:
-static void testAllEdgePairs(Puzzle myPuzzle);
+static void testAllEdgePairs(Puzzle myPuzzle, bool secondBest);
 static void displayEdgeMatches(Puzzle myPuzzle);
 };
 
