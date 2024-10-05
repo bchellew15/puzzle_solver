@@ -38,6 +38,9 @@ int main() {
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
+	Test::displayEdgeMatches(myPuzzle);
+	exit(0);
+
 	// assemble
 	start_time = chrono::steady_clock::now();
 	myPuzzle.assemble(match_verbose);
@@ -625,13 +628,13 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					Range e1CutOffRows = Range(0, h * pixelShift);
 					Mat e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
-					score += edgeComparisonScore2(e1CutOff, true);
+					score += edgeComparisonScore2(e1CutOff, false);
 
 					// bottom cutoff, penalize dark pixels
 					e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
 					e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
-					score += edgeComparisonScore2(e1CutOff, false);
+					score += edgeComparisonScore2(e1CutOff, true);
 				}
 
 				if(firstMatch || score < minScore) {
@@ -724,7 +727,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 		return bestMatch;
 	}
 
-	cout << "Piece " << piece->number << " matches edge " << bestMatch.edgeIndex << " of piece " << bestMatch.piece->number << endl;
+	cout << "Piece " << piece->number << " matches piece " << bestMatch.piece->number << ", index " << bestMatch.edgeIndex << endl;
 	return bestMatch;
 }
 
@@ -1175,22 +1178,55 @@ Point rotatePoint(Point p, Mat t) {
 }
 
 // test all edges against all others
-// TODO: add file output statements
-// TODO: automatically validate whether best score is correct and distance from next best score. set the actual match and call isConnected() to get next match
+// TODO: distance from next best score. set the actual match and call isConnected() to get next match
+// TODO: if fail, show best match
 void Test::testAllEdgePairs(Puzzle myPuzzle) {
 
-	ofstream file("match_scores.txt", ios_base::app);
+	// pieces here are by number, NOT index
+	vector<vector<vector<int>>> expectedMatches;
+	expectedMatches.push_back({{2, 2}, {}, {4, 2}, {14, 3}});
+	expectedMatches.push_back({{9, 0}, {}, {1, 0}, {12, 0}});
+	expectedMatches.push_back({{10, 3}, {16, 2}, {11, 2}, {}});
+	expectedMatches.push_back({{}, {5, 2}, {1, 2}, {}});
+	expectedMatches.push_back({{7, 2}, {14, 0}, {4, 1}, {}});
+	expectedMatches.push_back({{14, 1}, {7, 1}, {15, 3}, {16, 0}});
+	expectedMatches.push_back({{8, 2}, {6, 1}, {5, 0}, {}});
+	expectedMatches.push_back({{}, {15, 0}, {7, 0}, {}});
+	expectedMatches.push_back({{2, 0}, {10, 1}, {}, {}});
+	expectedMatches.push_back({{}, {9, 1}, {12, 3}, {3, 0}});
+	expectedMatches.push_back({{}, {}, {3, 2}, {13, 0}});
+	expectedMatches.push_back({{2, 3}, {14, 2}, {16, 3}, {10, 2}});
+	expectedMatches.push_back({{11, 3}, {16, 1}, {15, 2}, {}});
+	expectedMatches.push_back({{5, 1}, {6, 0}, {12, 1}, {1, 3}});
+	expectedMatches.push_back({{8, 1}, {}, {13, 2}, {6, 2}});
+	expectedMatches.push_back({{6, 3}, {13, 1}, {3, 1}, {12, 2}});
 
+	ofstream file("match_scores.txt");
+
+	int numPass = 0;
+	int numFail = 0;
 	for(int n = 0; n < myPuzzle.numPieces; n++) {
 		for(int i = 0; i < 4; i++) {
 			PuzzlePiece *cursor = &myPuzzle.pieces[n];
 			PieceMatch matchingPiece = myPuzzle.match(cursor, i, false, false);
-			if(matchingPiece.piece != nullptr) {
-				matchingPiece.piece->isConnected = false;
+			PuzzlePiece *piece = matchingPiece.piece;
+			if(piece == nullptr) continue;
+
+			piece->isConnected = false;  // disconnect so it's not skipped in the future
+
+			if(piece->number == expectedMatches[n][i][0] && matchingPiece.edgeIndex == expectedMatches[n][i][1]) {
+				file << "PASS: ";
+				numPass++;
+			} else {
+				file << "FAIL: ";
+				numFail++;
 			}
+			file << "Piece " << cursor->number << ", index " << i << " matches piece " << piece->number << ", index " << matchingPiece.edgeIndex << endl;
 		}
 	}
 
+
+	file << numPass << "/" << numPass+numFail << " PASS, " << numFail << "/" << numPass+numFail << " FAIL" << endl;
 	file.close();
 }
 
