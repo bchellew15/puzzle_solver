@@ -38,9 +38,9 @@ int main() {
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
-	Test::displayEdgeMatches(myPuzzle);
-	// Test::testAllEdgePairs(myPuzzle);
-	exit(0);
+	// Test::displayEdgeMatches(myPuzzle);
+	// Test::testAllEdgePairs(myPuzzle, true);
+	// exit(0);
 
 	// assemble
 	start_time = chrono::steady_clock::now();
@@ -643,10 +643,10 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					if(firstMatch) firstMatch = false;
 					minScore = score;
 					bestTheta = theta;
-					// (1) apply edge2 raster shift, but rotated about the center bc edge2 is rotated 180 degrees.
+					// (1) apply edge2 raster shift, but rotated about the center bc edge2 is rotated 180 degrees. -1 bc origin is center of TL pixel
 					// (2) apply the shift calculated in this function
 					// (3) apply reverse of edge1 raster shift
-					bestShift = Point(rotEdgeImg.cols - edge2.rasterShift.x, rotEdgeImg.rows - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
+					bestShift = Point(rotEdgeImg.cols - 1 - edge2.rasterShift.x, rotEdgeImg.rows - 1 - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
 					bestE1RowRange = e1RowRange;  // for display
 					bestE1ColRange = e1ColRange;
 					bestE2RowRange = e2RowRange;
@@ -1190,7 +1190,7 @@ Point rotatePoint(Point p, Mat t) {
 // test all edges against all others
 // TODO: distance from next best score. set the actual match and call isConnected() to get next match
 // TODO: if fail, show best match
-void Test::testAllEdgePairs(Puzzle myPuzzle) {
+void Test::testAllEdgePairs(Puzzle myPuzzle, bool secondBest) {
 
 	// pieces here are by number, NOT index
 	vector<vector<vector<int>>> expectedMatches;
@@ -1212,17 +1212,18 @@ void Test::testAllEdgePairs(Puzzle myPuzzle) {
 	expectedMatches.push_back({{6, 3}, {13, 1}, {3, 1}, {12, 2}});
 
 	ofstream file("match_scores.txt");
+	vector<double> scoreRatios;
 
 	int numPass = 0;
 	int numFail = 0;
 	for(int n = 0; n < myPuzzle.numPieces; n++) {
 		for(int i = 0; i < 4; i++) {
+			if(expectedMatches[n][i].size() == 0) continue;
 			PuzzlePiece *cursor = &myPuzzle.pieces[n];
 			PieceMatch matchingPiece = myPuzzle.match(cursor, i, false, false);
 			PuzzlePiece *piece = matchingPiece.piece;
-			if(piece == nullptr) continue;
 
-			piece->isConnected = false;  // disconnect so it's not skipped in the future
+			// piece->isConnected = false;  // unnecessary, isConnected is set in assemble()
 
 			if(piece->number == expectedMatches[n][i][0] && matchingPiece.edgeIndex == expectedMatches[n][i][1]) {
 				file << "PASS: ";
@@ -1231,10 +1232,28 @@ void Test::testAllEdgePairs(Puzzle myPuzzle) {
 				file << "FAIL: ";
 				numFail++;
 			}
-			file << "Piece " << cursor->number << ", index " << i << " matches piece " << piece->number << ", index " << matchingPiece.edgeIndex << endl;
+			file << "Piece " << cursor->number << ", index " << i << " matches piece " << piece->number << ", index " << matchingPiece.edgeIndex << "(score " << matchingPiece.match.score << ")" << endl;
+
+			if(secondBest) {
+				myPuzzle.pieces[expectedMatches[n][i][0]-1].isConnected = true;
+				double firstScore = matchingPiece.match.score;
+				matchingPiece = myPuzzle.match(cursor, i, false, false);
+				piece = matchingPiece.piece;
+				myPuzzle.pieces[expectedMatches[n][i][0]-1].isConnected = false;  // disconnect
+				double scoreRatio = matchingPiece.match.score / firstScore;
+				scoreRatios.push_back(scoreRatio);
+				file << "second best match: piece " << piece->number << ", index " << matchingPiece.edgeIndex << "(score " << matchingPiece.match.score << ", ratio " << scoreRatio << ")" << endl;
+			}
 		}
 	}
 
+	if(secondBest) {
+		sort(scoreRatios.begin(), scoreRatios.end());
+		for(double s: scoreRatios) {
+			cout << s << " ";
+		}
+		cout << endl;
+	}
 
 	file << numPass << "/" << numPass+numFail << " PASS, " << numFail << "/" << numPass+numFail << " FAIL" << endl;
 	file.close();
@@ -1247,18 +1266,22 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	// uses piece numbers, NOT indices
 	vector<vector<int>> idxs;
 
-	idxs.push_back({6, 3, 16, 0});
-	idxs.push_back({6, 3, 1, 3});
+	// close to false positive
 
 	idxs.push_back({10, 1, 9, 1});
 	idxs.push_back({10, 1, 16, 2});
-	idxs.push_back({10, 1, 8, 2});
+
+	idxs.push_back({12, 1, 14, 2});
+	idxs.push_back({12, 1, 10, 2});
+
+	idxs.push_back({14, 3, 1, 3});
+	idxs.push_back({14, 3, 3, 0});
 
 	idxs.push_back({15, 0, 8, 1});
 	idxs.push_back({15, 0, 15, 2});
 
-	idxs.push_back({16, 2, 3, 1});
-	idxs.push_back({16, 2, 10, 1});
+	idxs.push_back({15, 2, 13, 2});
+	idxs.push_back({15, 2, 15, 0});
 
 	// cout << "p to go back" << endl;
 	for (int i = 0; i < idxs.size(); ) {
