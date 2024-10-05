@@ -39,6 +39,7 @@ int main() {
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
 	Test::displayEdgeMatches(myPuzzle);
+	// Test::testAllEdgePairs(myPuzzle);
 	exit(0);
 
 	// assemble
@@ -543,7 +544,7 @@ double EdgeOfPiece::edgeComparisonScore(Mat edge1, Mat edge2) {
 	bitwise_or(edge1, edge2, nor_mat);
 	bitwise_not(nor_mat, nor_mat);
 	bitwise_and(edge1, edge2, and_mat);
-	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255; // / (edge1.rows * edge1.cols);
+	return (sum(nor_mat)[0] + sum(and_mat)[0]) / 255;
 }
 
 // rename this
@@ -636,6 +637,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
 					score += edgeComparisonScore2(e1CutOff, true);
 				}
+				score *= maxWidth / (double)edge2.edgeImg.cols;
 
 				if(firstMatch || score < minScore) {
 					if(firstMatch) firstMatch = false;
@@ -1237,41 +1239,18 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	// uses piece numbers, NOT indices
 	vector<vector<int>> idxs;
 
-	idxs.push_back({3, 0, 10, 3});
-	idxs.push_back({3, 0, 14, 3});
-
-	idxs.push_back({7, 1, 6, 1});
-	idxs.push_back({7, 1, 7, 0});
-	idxs.push_back({7, 1, 6, 3});
-
-	idxs.push_back({7, 2, 5, 0});
-	idxs.push_back({7, 2, 14, 3});
-	idxs.push_back({7, 2, 10, 1});
+	idxs.push_back({6, 3, 16, 0});
+	idxs.push_back({6, 3, 1, 3});
 
 	idxs.push_back({10, 1, 9, 1});
 	idxs.push_back({10, 1, 16, 2});
 	idxs.push_back({10, 1, 8, 2});
 
-	idxs.push_back({11, 3, 13, 0});
-	idxs.push_back({11, 3, 15, 2});
-
-	idxs.push_back({12, 0, 2, 3});
-	idxs.push_back({12, 0, 6, 1});
-
-	idxs.push_back({12, 2, 16, 3});
-	idxs.push_back({12, 2, 4, 1});
-	idxs.push_back({12, 2, 15, 2});
-
-	idxs.push_back({12, 1, 14, 2});
-	idxs.push_back({12, 1, 10, 2});
-	idxs.push_back({12, 1, 13, 1});
-
-	idxs.push_back({14, 2, 12, 1});
-	idxs.push_back({14, 2, 16, 1});
-	idxs.push_back({14, 2, 5, 2});
-
 	idxs.push_back({15, 0, 8, 1});
 	idxs.push_back({15, 0, 15, 2});
+
+	idxs.push_back({16, 2, 3, 1});
+	idxs.push_back({16, 2, 10, 1});
 
 	cout << "p to go back" << endl;
 	for (int i = 0; i < idxs.size(); ) {
