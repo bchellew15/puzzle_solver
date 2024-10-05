@@ -621,11 +621,13 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
 					score += edgeComparisonScore2(e2CutOff, false);
 				} else {
+					// top cutoff, penalize white pixels
 					Range e1CutOffRows = Range(0, h * pixelShift);
 					Mat e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
 					score += edgeComparisonScore2(e1CutOff, true);
 
+					// bottom cutoff, penalize dark pixels
 					e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
 					e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
@@ -1235,7 +1237,14 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	idxs.push_back({15, 0, 8, 1});
 	idxs.push_back({15, 0, 15, 2});
 
-	for (vector<int> v: idxs) {
+	cout << "p to go back" << endl;
+	for (int i = 0; i < idxs.size(); ) {
+		vector<int> v = idxs[i];
 		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], true);
+
+		string nextStr;
+		cin >> nextStr;
+		if(nextStr == "p") i--;
+		else i++;
 	}
 }
