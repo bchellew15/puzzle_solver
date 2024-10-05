@@ -121,7 +121,7 @@ void EdgeOfPiece::processEdge() {
 	for(int theta = -4; theta <= 4; theta +=2) {
 		rotEdgeImgAngles.push_back(theta);
 	}
-	Point imgCenter = Point(edgeImg.cols/2, edgeImg.rows/2);
+	Point imgCenter = Point((double)(edgeImg.cols-1)/2, (double)(edgeImg.rows-1)/2);
 	for(double deg: rotEdgeImgAngles) {
 		Mat rotatedEdgeImg;
 		Mat rot1 = getRotationMatrix2D(rasterShift, deg, 1);
@@ -669,15 +669,23 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 			bestE1.copyTo(channel1(edge1Box));
 			rectangle(channel1, Point(0, bestE2RowRange.end), Point(windowWidth, channel1.rows), 255, -1);
 			bestE2.copyTo(channel3(Rect({}, bestE2.size())));
+			cout << "e1 is smaller" << endl;
+			cout << "row range: " << bestE2RowRange << endl;
+			cout << (Rect(Point(0, bestE2RowRange.end), Point(windowWidth, channel1.rows))) << endl;
+			cout << "e2 rect: " << Rect({}, bestE2.size()) << endl;
 		} else {
 			bestE1.copyTo(channel1(Rect({}, bestE1.size())));
 			Rect edge2Box = Rect(0, bestE1RowRange.start, windowWidth, minHeight);
 			bestE2.copyTo(channel3(edge2Box));
 			rectangle(channel3, Point(0, 0), Point(windowWidth, bestE1RowRange.start), 255, -1);
+			cout << "e2 is smaller" << endl;
+			cout << "row range: " << bestE1RowRange << endl;
+			cout << (Rect(Point(0, 0), Point(windowWidth, bestE1RowRange.start)));
 		}
 		Mat bothEdges;
 		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
 		merge(channels, 3, bothEdges);
+		cout << "top left pixel: " << bothEdges.at<Vec3b>(0, 0) << endl;
 
 		cout << "score: " << minScore << endl;
 		namedWindow("edgeMatch");
@@ -1252,14 +1260,15 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	idxs.push_back({16, 2, 3, 1});
 	idxs.push_back({16, 2, 10, 1});
 
-	cout << "p to go back" << endl;
+	// cout << "p to go back" << endl;
 	for (int i = 0; i < idxs.size(); ) {
 		vector<int> v = idxs[i];
 		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], true);
 
-		string nextStr;
-		cin >> nextStr;
-		if(nextStr == "p") i--;
-		else i++;
+//		string nextStr;
+//		cin >> nextStr;
+//		if(nextStr == "p") i--;
+//		else i++;
+		i++;
 	}
 }
