@@ -280,6 +280,22 @@ void PuzzlePiece::process(bool verbose) {
 		core = secondBox;
 	}
 
+	// TEST: output contour points
+	// draw just the outline
+//	vector<vector<Point>> contourVec = {outline};
+//	Mat justOutline = Mat::zeros(color_mask.size(), color_mask.type());
+//	drawContours(justOutline, contourVec, 0, 255, -1);
+//	close_kernel = getStructuringElement(MORPH_RECT, Size(10, 10));
+//	morphologyEx(justOutline, justOutline, MORPH_CLOSE, close_kernel, Point(-1, 1), 5);
+//	contourVec.clear();
+////	findContours(justOutline, contourVec, RETR_EXTERNAL, CHAIN_APPROX_NONE);
+//	ofstream outlineFile("piece_outline.csv");
+//	for(Point p: outline) {
+//		outlineFile << p.x << "," << p.y << "\n";
+//	}
+//	outlineFile.close();
+//	exit(0);
+
 	// scale image and piece outline based on size of coin
 	if(scalingLength == 0) {
 		scalingLength = coinRadius;
@@ -678,7 +694,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 	bool firstMatch = true;
 
 	if(piece->edges[edgeIndex].isEdge) {
-		cout << "ERROR: calling match() on an edge piece" << endl;
+		cout << "ERROR: calling match() on a flat edge" << endl;
 		return bestMatch;
 	}
 
@@ -1059,8 +1075,7 @@ void Puzzle::display(bool verbose) {
 			} else {  // most pieces
 				Point shiftUp = upNeighbor->edges[2].midpoint - cursor->edges[0].midpoint + cursor->correctionShiftUp;
 				Point shiftLeft = leftNeighbor->edges[1].midpoint - cursor->edges[3].midpoint + cursor->correctionShiftLeft;
-				shift = shiftLeft; // TEMP
-				// shift = (shiftUp + shiftLeft) / 2;
+				shift = (shiftUp + shiftLeft) / 2;
 			}
 			cursor->shift(shift);  // translate the midpoints and core
 			cout << "final shift: " << shift << endl; // debug
@@ -1155,4 +1170,72 @@ Point rotatePoint(Point p, Mat t) {
 	double x = t.at<double>(0, 0) * p.x + t.at<double>(0, 1) * p.y + t.at<double>(0, 2);
 	double y = t.at<double>(1, 0) * p.x + t.at<double>(1, 1) * p.y + t.at<double>(1, 2);
 	return Point(x, y);
+}
+
+// test all edges against all others
+// TODO: add file output statements
+// TODO: automatically validate whether best score is correct and distance from next best score. set the actual match and call isConnected() to get next match
+void Test::testAllEdgePairs(Puzzle myPuzzle) {
+
+	ofstream file("match_scores.txt", ios_base::app);
+
+	for(int n = 0; n < myPuzzle.numPieces; n++) {
+		for(int i = 0; i < 4; i++) {
+			PuzzlePiece *cursor = &myPuzzle.pieces[n];
+			PieceMatch matchingPiece = myPuzzle.match(cursor, i, false, false);
+			if(matchingPiece.piece != nullptr) {
+				matchingPiece.piece->isConnected = false;
+			}
+		}
+	}
+
+	file.close();
+}
+
+void Test::displayEdgeMatches(Puzzle myPuzzle) {
+	PuzzlePiece *pieces = myPuzzle.pieces;
+
+	// values are: pieceIdx, edgeIdx, pieceIdx, edgeIdx
+	// uses piece numbers, NOT indices
+	vector<vector<int>> idxs;
+
+	idxs.push_back({3, 0, 10, 3});
+	idxs.push_back({3, 0, 14, 3});
+
+	idxs.push_back({7, 1, 6, 1});
+	idxs.push_back({7, 1, 7, 0});
+	idxs.push_back({7, 1, 6, 3});
+
+	idxs.push_back({7, 2, 5, 0});
+	idxs.push_back({7, 2, 14, 3});
+	idxs.push_back({7, 2, 10, 1});
+
+	idxs.push_back({10, 1, 9, 1});
+	idxs.push_back({10, 1, 16, 2});
+	idxs.push_back({10, 1, 8, 2});
+
+	idxs.push_back({11, 3, 13, 0});
+	idxs.push_back({11, 3, 15, 2});
+
+	idxs.push_back({12, 0, 2, 3});
+	idxs.push_back({12, 0, 6, 1});
+
+	idxs.push_back({12, 2, 16, 3});
+	idxs.push_back({12, 2, 4, 1});
+	idxs.push_back({12, 2, 15, 2});
+
+	idxs.push_back({12, 1, 14, 2});
+	idxs.push_back({12, 1, 10, 2});
+	idxs.push_back({12, 1, 13, 1});
+
+	idxs.push_back({14, 2, 12, 1});
+	idxs.push_back({14, 2, 16, 1});
+	idxs.push_back({14, 2, 5, 2});
+
+	idxs.push_back({15, 0, 8, 1});
+	idxs.push_back({15, 0, 15, 2});
+
+	for (vector<int> v: idxs) {
+		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], true);
+	}
 }
