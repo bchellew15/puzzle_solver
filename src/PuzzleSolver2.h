@@ -13,6 +13,15 @@ public:
 	double theta;
 	Point shift;
 	double score;
+
+	// for display
+	Mat e1;
+	Mat e2;
+	Range e1RowRange;
+	Range e2RowRange;
+	int minHeight;
+	int maxHeight;
+	int windowWidth;
 };
 
 class EdgeOfPiece {
@@ -23,6 +32,7 @@ public:
 	vector<Mat> rotEdgeImgs;
 	vector<double> rotEdgeImgAngles;
 	Point rasterShift;  // amount edge center is shifted when made into raster image
+	vector<Point> rotRasterShifts;
 	bool isEdge = false;
 	double rotCorrection;  // for flat edges
 	int shiftCorrection; // for flat edges
@@ -30,6 +40,7 @@ public:
 	static double edgeShrinkFactor; // shrink edges for faster processing
 	static int pixelShift; // for edge comparison
 
+	pair<Mat, Point> rasterizeContour(vector<Point> contour, bool inverted);
 	void processEdge();
 	static double edgeComparisonScore(Mat edge1, Mat edge2);
 	static double edgeComparisonScore2(Mat edge, bool penalizeZeros);

@@ -65,6 +65,26 @@ int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
 
+pair<Mat, Point> EdgeOfPiece::rasterizeContour(vector<Point> contour, bool inverted) {
+
+	Rect bound = boundingRect(contour);
+	Mat img = Mat::zeros(bound.height / edgeShrinkFactor, bound.width / edgeShrinkFactor, CV_8UC1);
+	Point shift = -Point(bound.x, bound.y) / edgeShrinkFactor;
+	vector<Point> rasterLocs;
+	for(Point p: contour) {
+		rasterLocs.push_back(p / edgeShrinkFactor + shift);
+	}
+	if(inverted) {  // fill to the top corners
+		rasterLocs.push_back(Point(img.cols, 0));
+		rasterLocs.push_back(Point(0, 0));
+	} else {  // fill to the bottom corners
+		rasterLocs.push_back(Point(0, img.rows));
+		rasterLocs.push_back(Point(img.cols, img.rows));
+	}
+	vector<vector<Point>> rasterLocsVec({rasterLocs});
+	drawContours(img, rasterLocsVec, -1, 255, -1);  // thickness=-1 fills in the contour
+	return pair<Mat, Point>(img, shift);
+}
 
 // fit line to decide if the edge is flat.
 // if yes, calculate rotation and vertical shift required to line up the edge with border of puzzle.
@@ -104,31 +124,21 @@ void EdgeOfPiece::processEdge() {
 	isEdge = false;
 
 	// create raster images of the edge
-	Rect edgeBound = boundingRect(edge);
-	edgeImg = Mat::zeros(edgeBound.height / edgeShrinkFactor, edgeBound.width / edgeShrinkFactor, CV_8UC1);
-	rasterShift = - Point(edgeBound.x, edgeBound.y) / edgeShrinkFactor;
-	vector<Point> rasterEdge;
-	for(Point p: edge) {
-		rasterEdge.push_back(p / edgeShrinkFactor + rasterShift);
-	}
-	rasterEdge.push_back(Point(0, edgeImg.rows));
-	rasterEdge.push_back(Point(edgeImg.cols, edgeImg.rows));
-	vector<vector<Point>> rasterEdgeVec;
-	rasterEdgeVec.push_back(rasterEdge);
-	drawContours(edgeImg, rasterEdgeVec, -1, 255, -1);  // thickness=-1 fills in the contour
+	pair<Mat, Point> imgAndShift = rasterizeContour(edge, false);
+	edgeImg = imgAndShift.first;
+	rasterShift = imgAndShift.second;
 
 	// raster images of rotated edges
-	for(int theta = -4; theta <= 4; theta +=2) {
+	for(double theta = -4; theta <= 4; theta +=2) {
 		rotEdgeImgAngles.push_back(theta);
-	}
-	Point imgCenter = Point((double)(edgeImg.cols-1)/2, (double)(edgeImg.rows-1)/2);
-	for(double deg: rotEdgeImgAngles) {
-		Mat rotatedEdgeImg;
-		Mat rot1 = getRotationMatrix2D(rasterShift, deg, 1);
-		warpAffine(edgeImg, rotatedEdgeImg, rot1, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
-		Mat rot2 = getRotationMatrix2D(imgCenter, 180, 1);
-		warpAffine(rotatedEdgeImg, rotatedEdgeImg, rot2, edgeImg.size(), INTER_LINEAR, BORDER_CONSTANT, 0);
-		rotEdgeImgs.push_back(rotatedEdgeImg);
+		vector<Point> rotEdge;
+		Mat rotMat = getRotationMatrix2D(Point(0, 0), 180 + theta, 1);
+		for(const Point &p: edge) {
+			rotEdge.push_back(rotatePoint(p, rotMat));
+		}
+		imgAndShift = rasterizeContour(rotEdge, true);
+		rotEdgeImgs.push_back(imgAndShift.first);
+		rotRasterShifts.push_back(imgAndShift.second);
 	}
 }
 
@@ -563,29 +573,20 @@ double EdgeOfPiece::edgeComparisonScore2(Mat edge, bool penalizeZeros) {
 // edge2 images are rotated ~180 degrees for comparison.
 EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool verbose) {
 
-	int minHeight = min(edge1.edgeImg.rows, edge2.edgeImg.rows);
-	int maxHeight = max(edge1.edgeImg.rows, edge2.edgeImg.rows);
-	int h_intervals = (maxHeight - minHeight) / pixelShift;
-	int minWidth = min(edge1.edgeImg.cols, edge2.edgeImg.cols);
-	int windowWidth = minWidth * 8 / 10;
-	int maxWidth = max(edge1.edgeImg.cols, edge2.edgeImg.cols);
-	int w_intervals = (maxWidth - windowWidth) / pixelShift;
-
-	double minScore;
-	int bestTheta;
-	Point bestShift;
-	Range bestE1RowRange; // for display only
-	Range bestE1ColRange;
-	Range bestE2RowRange;
-	Range bestE2ColRange;
-	Mat bestE1; // for display only
-	Mat bestE2;
 	bool firstMatch = true;
+	EdgeMatch bestMatch;
 
 	for(int i = 0; i < edge2.rotEdgeImgAngles.size(); i++) {
 
-		double theta = edge2.rotEdgeImgAngles[i];
 		Mat rotEdgeImg = edge2.rotEdgeImgs[i];
+
+		int minHeight = min(edge1.edgeImg.rows, rotEdgeImg.rows);
+		int maxHeight = max(edge1.edgeImg.rows, rotEdgeImg.rows);
+		int h_intervals = (maxHeight - minHeight) / pixelShift;
+		int minWidth = min(edge1.edgeImg.cols, rotEdgeImg.cols);
+		int windowWidth = minWidth * 8 / 10;
+		int maxWidth = max(edge1.edgeImg.cols, rotEdgeImg.cols);
+		int w_intervals = (maxWidth - windowWidth) / pixelShift;
 
 		for(int h = 0; h < h_intervals + 1; h++) {
 			for(int w = 0; w < w_intervals + 1; w++) {
@@ -594,14 +595,14 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 				Range e1RowRange;
 				Range e2RowRange;
 
-				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+				if(edge1.edgeImg.rows <= rotEdgeImg.rows) {
 					e1RowRange = Range(0, minHeight);
 					e2RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
 				} else {
 					e2RowRange = Range(0, minHeight);
 					e1RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
 				}
-				if(edge1.edgeImg.cols <= edge2.edgeImg.cols) {
+				if(edge1.edgeImg.cols <= rotEdgeImg.cols) {
 					e1ColRange = Range(minWidth/10, minWidth/10 + windowWidth);
 					e2ColRange = Range(w * pixelShift, w * pixelShift + windowWidth);
 				} else {
@@ -612,7 +613,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 				Mat e2 = rotEdgeImg.colRange(e2ColRange);
 
 				double score = edgeComparisonScore(e1.rowRange(e1RowRange), e2.rowRange(e2RowRange));
-				if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
+				if(edge1.edgeImg.rows <= rotEdgeImg.rows) {
 					// top cutoff, penalize dark pixels
 					Range e2CutOffRows = Range(0, h * pixelShift);
 					Mat e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
@@ -620,7 +621,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					score += edgeComparisonScore2(e2CutOff, true);
 
 					// bottom cutoff, penalize white pixels
-					e2CutOffRows = Range(h * pixelShift + minHeight, edge2.edgeImg.rows);
+					e2CutOffRows = Range(h * pixelShift + minHeight, rotEdgeImg.rows);
 					e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
 					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
 					score += edgeComparisonScore2(e2CutOff, false);
@@ -637,67 +638,68 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
 					score += edgeComparisonScore2(e1CutOff, true);
 				}
-				score *= maxWidth / (double)edge2.edgeImg.cols;
+				score *= maxWidth / (double)rotEdgeImg.cols;
 
-				if(firstMatch || score < minScore) {
+				if(firstMatch || score < bestMatch.score) {
 					if(firstMatch) firstMatch = false;
-					minScore = score;
-					bestTheta = theta;
+
+					bestMatch.score = score;
+					bestMatch.theta = edge2.rotEdgeImgAngles[i];
 					// (1) apply edge2 raster shift, but rotated about the center bc edge2 is rotated 180 degrees. -1 bc origin is center of TL pixel
 					// (2) apply the shift calculated in this function
 					// (3) apply reverse of edge1 raster shift
-					bestShift = Point(rotEdgeImg.cols - 1 - edge2.rasterShift.x, rotEdgeImg.rows - 1 - edge2.rasterShift.y) + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
-					bestE1RowRange = e1RowRange;  // for display
-					bestE1ColRange = e1ColRange;
-					bestE2RowRange = e2RowRange;
-					bestE2ColRange = e2ColRange;
-					bestE1 = e1;
-					bestE2 = e2;
+					Point shift = edge2.rotRasterShifts[i] + Point(e1ColRange.start - e2ColRange.start, e1RowRange.start - e2RowRange.start) - edge1.rasterShift;
+					bestMatch.shift = shift * edgeShrinkFactor;
+
+					// for display
+					bestMatch.e1 = e1;
+					bestMatch.e2 = e2;
+					bestMatch.e1RowRange = e1RowRange;
+					bestMatch.e2RowRange = e2RowRange;
+					bestMatch.minHeight = minHeight;
+					bestMatch.maxHeight = maxHeight;
+					bestMatch.windowWidth = windowWidth;
 				}
 			}
 		}
 	}
 
 	if(verbose) {
-		cout << "best theta: " << bestTheta << endl;
+		cout << "best theta: " << bestMatch.theta << endl;
 
-		Mat channel1 = Mat::zeros(maxHeight, windowWidth, CV_8UC1);
-		Mat channel3 = Mat::zeros(maxHeight, windowWidth, CV_8UC1);
+		Mat channel1 = Mat::zeros(bestMatch.maxHeight, bestMatch.windowWidth, CV_8UC1);
+		Mat channel3 = Mat::zeros(bestMatch.maxHeight, bestMatch.windowWidth, CV_8UC1);
 		// might be possible to do this without the if...
-		if(edge1.edgeImg.rows <= edge2.edgeImg.rows) {
-			Rect edge1Box = Rect(0, bestE2RowRange.start, windowWidth, minHeight);
-			bestE1.copyTo(channel1(edge1Box));
-			rectangle(channel1, Point(0, bestE2RowRange.end), Point(windowWidth, channel1.rows), 255, -1);
-			bestE2.copyTo(channel3(Rect({}, bestE2.size())));
+		if(edge1.edgeImg.rows <= bestMatch.e2.rows) {
+			Rect edge1Box = Rect(0, bestMatch.e2RowRange.start, bestMatch.windowWidth, bestMatch.minHeight);
+			bestMatch.e1.copyTo(channel1(edge1Box));
+			rectangle(channel1, Point(0, bestMatch.e2RowRange.end), Point(bestMatch.windowWidth, channel1.rows), 255, -1);
+			bestMatch.e2.copyTo(channel3(Rect({}, bestMatch.e2.size())));
 			cout << "e1 is smaller" << endl;
-			cout << "row range: " << bestE2RowRange << endl;
-			cout << (Rect(Point(0, bestE2RowRange.end), Point(windowWidth, channel1.rows))) << endl;
-			cout << "e2 rect: " << Rect({}, bestE2.size()) << endl;
+			cout << "row range: " << bestMatch.e2RowRange << endl;
+			cout << (Rect(Point(0, bestMatch.e2RowRange.end), Point(bestMatch.windowWidth, channel1.rows))) << endl;
+			cout << "e2 rect: " << Rect({}, bestMatch.e2.size()) << endl;
 		} else {
-			bestE1.copyTo(channel1(Rect({}, bestE1.size())));
-			Rect edge2Box = Rect(0, bestE1RowRange.start, windowWidth, minHeight);
-			bestE2.copyTo(channel3(edge2Box));
-			rectangle(channel3, Point(0, 0), Point(windowWidth, bestE1RowRange.start), 255, -1);
+			bestMatch.e1.copyTo(channel1(Rect({}, bestMatch.e1.size())));
+			Rect edge2Box = Rect(0, bestMatch.e1RowRange.start, bestMatch.windowWidth, bestMatch.minHeight);
+			bestMatch.e2.copyTo(channel3(edge2Box));
+			rectangle(channel3, Point(0, 0), Point(bestMatch.windowWidth, bestMatch.e1RowRange.start), 255, -1);
 			cout << "e2 is smaller" << endl;
-			cout << "row range: " << bestE1RowRange << endl;
-			cout << (Rect(Point(0, 0), Point(windowWidth, bestE1RowRange.start)));
+			cout << "row range: " << bestMatch.e1RowRange << endl;
+			cout << (Rect(Point(0, 0), Point(bestMatch.windowWidth, bestMatch.e1RowRange.start)));
 		}
 		Mat bothEdges;
 		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
 		merge(channels, 3, bothEdges);
 		cout << "top left pixel: " << bothEdges.at<Vec3b>(0, 0) << endl;
 
-		cout << "score: " << minScore << endl;
+		cout << "score: " << bestMatch.score << endl;
 		namedWindow("edgeMatch");
 		imshow("edgeMatch", bothEdges);
 		waitKey(0);
 		destroyWindow("edgeMatch");
 	}
 
-	EdgeMatch bestMatch;
-	bestMatch.score = minScore;
-	bestMatch.theta = bestTheta;
-	bestMatch.shift = bestShift * edgeShrinkFactor;
 	return bestMatch;
 }
 
