@@ -59,7 +59,7 @@ int main() {
 	return 0;
 }
 
-int EdgeOfPiece::edgeImgBuffer = 10;
+int EdgeOfPiece::edgeHeightBuffer = 5;
 double EdgeOfPiece::edgeShrinkFactor = 5;
 int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
 double PuzzlePiece::scalingLength = 0;
@@ -68,8 +68,8 @@ double PuzzlePiece::avgBrightness = 0;
 pair<Mat, Point> EdgeOfPiece::rasterizeContour(vector<Point> contour, bool inverted) {
 
 	Rect bound = boundingRect(contour);
-	Mat img = Mat::zeros(bound.height / edgeShrinkFactor, bound.width / edgeShrinkFactor, CV_8UC1);
-	Point shift = -Point(bound.x, bound.y) / edgeShrinkFactor;
+	Mat img = Mat::zeros(bound.height / edgeShrinkFactor + 2 * edgeHeightBuffer, bound.width / edgeShrinkFactor + 1, CV_8UC1);
+	Point shift = -Point(bound.x, bound.y) / edgeShrinkFactor + Point(0, edgeHeightBuffer);
 	vector<Point> rasterLocs;
 	for(Point p: contour) {
 		rasterLocs.push_back(p / edgeShrinkFactor + shift);
@@ -139,6 +139,11 @@ void EdgeOfPiece::processEdge() {
 		imgAndShift = rasterizeContour(rotEdge, true);
 		rotEdgeImgs.push_back(imgAndShift.first);
 		rotRasterShifts.push_back(imgAndShift.second);
+
+//		namedWindow("temp");
+//		imshow("temp", imgAndShift.first);
+//		waitKey(0);
+//		destroyWindow("temp");
 	}
 }
 
@@ -581,8 +586,9 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 		Mat rotEdgeImg = edge2.rotEdgeImgs[i];
 
 		int minHeight = min(edge1.edgeImg.rows, rotEdgeImg.rows);
+		int windowHeight = minHeight - 2 * edgeHeightBuffer;
 		int maxHeight = max(edge1.edgeImg.rows, rotEdgeImg.rows);
-		int h_intervals = (maxHeight - minHeight) / pixelShift;
+		int h_intervals = (maxHeight - windowHeight) / pixelShift;
 		int minWidth = min(edge1.edgeImg.cols, rotEdgeImg.cols);
 		int windowWidth = minWidth * 8 / 10;
 		int maxWidth = max(edge1.edgeImg.cols, rotEdgeImg.cols);
@@ -596,11 +602,11 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 				Range e2RowRange;
 
 				if(edge1.edgeImg.rows <= rotEdgeImg.rows) {
-					e1RowRange = Range(0, minHeight);
-					e2RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
+					e1RowRange = Range(edgeHeightBuffer, edgeHeightBuffer + windowHeight);
+					e2RowRange = Range(h * pixelShift, h * pixelShift + windowHeight);
 				} else {
-					e2RowRange = Range(0, minHeight);
-					e1RowRange = Range(h * pixelShift, h * pixelShift + minHeight);
+					e2RowRange = Range(edgeHeightBuffer, edgeHeightBuffer + windowHeight);
+					e1RowRange = Range(h * pixelShift, h * pixelShift + windowHeight);
 				}
 				if(edge1.edgeImg.cols <= rotEdgeImg.cols) {
 					e1ColRange = Range(minWidth/10, minWidth/10 + windowWidth);
@@ -621,7 +627,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					score += edgeComparisonScore2(e2CutOff, true);
 
 					// bottom cutoff, penalize white pixels
-					e2CutOffRows = Range(h * pixelShift + minHeight, rotEdgeImg.rows);
+					e2CutOffRows = Range(h * pixelShift + windowHeight, rotEdgeImg.rows);
 					e2CutOff = rotEdgeImg.rowRange(e2CutOffRows);
 					if(e2CutOff.cols > 0) e2CutOff = e2CutOff.colRange(e2ColRange);
 					score += edgeComparisonScore2(e2CutOff, false);
@@ -633,7 +639,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					score += edgeComparisonScore2(e1CutOff, false);
 
 					// bottom cutoff, penalize dark pixels
-					e1CutOffRows = Range(h * pixelShift + minHeight, edge1.edgeImg.rows);
+					e1CutOffRows = Range(h * pixelShift + windowHeight, edge1.edgeImg.rows);
 					e1CutOff = edge1.edgeImg.rowRange(e1CutOffRows);
 					if(e1CutOff.cols > 0) e1CutOff = e1CutOff.colRange(e1ColRange);
 					score += edgeComparisonScore2(e1CutOff, true);
@@ -659,6 +665,7 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 					bestMatch.minHeight = minHeight;
 					bestMatch.maxHeight = maxHeight;
 					bestMatch.windowWidth = windowWidth;
+					bestMatch.windowHeight = windowHeight;
 				}
 			}
 		}
@@ -671,22 +678,20 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 		Mat channel3 = Mat::zeros(bestMatch.maxHeight, bestMatch.windowWidth, CV_8UC1);
 		// might be possible to do this without the if...
 		if(edge1.edgeImg.rows <= bestMatch.e2.rows) {
-			Rect edge1Box = Rect(0, bestMatch.e2RowRange.start, bestMatch.windowWidth, bestMatch.minHeight);
-			bestMatch.e1.copyTo(channel1(edge1Box));
+			Rect edge1Box = Rect(0, bestMatch.e2RowRange.start, bestMatch.windowWidth, bestMatch.windowHeight);
+			bestMatch.e1.rowRange(bestMatch.e1RowRange).copyTo(channel1(edge1Box));
 			rectangle(channel1, Point(0, bestMatch.e2RowRange.end), Point(bestMatch.windowWidth, channel1.rows), 255, -1);
 			bestMatch.e2.copyTo(channel3(Rect({}, bestMatch.e2.size())));
 			cout << "e1 is smaller" << endl;
 			cout << "row range: " << bestMatch.e2RowRange << endl;
-			cout << (Rect(Point(0, bestMatch.e2RowRange.end), Point(bestMatch.windowWidth, channel1.rows))) << endl;
 			cout << "e2 rect: " << Rect({}, bestMatch.e2.size()) << endl;
 		} else {
 			bestMatch.e1.copyTo(channel1(Rect({}, bestMatch.e1.size())));
-			Rect edge2Box = Rect(0, bestMatch.e1RowRange.start, bestMatch.windowWidth, bestMatch.minHeight);
-			bestMatch.e2.copyTo(channel3(edge2Box));
+			Rect edge2Box = Rect(0, bestMatch.e1RowRange.start, bestMatch.windowWidth, bestMatch.windowHeight);
+			bestMatch.e2.rowRange(bestMatch.e2RowRange).copyTo(channel3(edge2Box));
 			rectangle(channel3, Point(0, 0), Point(bestMatch.windowWidth, bestMatch.e1RowRange.start), 255, -1);
 			cout << "e2 is smaller" << endl;
 			cout << "row range: " << bestMatch.e1RowRange << endl;
-			cout << (Rect(Point(0, 0), Point(bestMatch.windowWidth, bestMatch.e1RowRange.start)));
 		}
 		Mat bothEdges;
 		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
@@ -1219,7 +1224,7 @@ void Test::testAllEdgePairs(Puzzle myPuzzle, bool secondBest) {
 	int numPass = 0;
 	int numFail = 0;
 	for(int n = 0; n < myPuzzle.numPieces; n++) {
-		for(int i = 0; i < 4; i++) {
+		for(int i = 0; i < 4; i++) {  // TEST
 			if(expectedMatches[n][i].size() == 0) continue;
 			PuzzlePiece *cursor = &myPuzzle.pieces[n];
 			PieceMatch matchingPiece = myPuzzle.match(cursor, i, false, false);

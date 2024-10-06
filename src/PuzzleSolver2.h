@@ -22,6 +22,7 @@ public:
 	int minHeight;
 	int maxHeight;
 	int windowWidth;
+	int windowHeight;
 };
 
 class EdgeOfPiece {
@@ -36,7 +37,7 @@ public:
 	bool isEdge = false;
 	double rotCorrection;  // for flat edges
 	int shiftCorrection; // for flat edges
-	static int edgeImgBuffer;  // 10 looked visually good
+	static int edgeHeightBuffer;  // not scaled by pixelShrinkFactor
 	static double edgeShrinkFactor; // shrink edges for faster processing
 	static int pixelShift; // for edge comparison
 
