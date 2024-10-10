@@ -13,25 +13,30 @@ using namespace cv;
 
 int main() {
 
-	bool process_verbose = false;
+	bool process_verbose = true;
 	bool match_verbose = false;
 	bool display_verbose = false;
 
-	int numPieces = 16;
+	int numPieces = 12;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_darkgreen/Piece";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_12/";
 	for( int i = 0; i < numPieces; i++) {
-		string filename = dir + to_string(i+1) + ".jpeg";
+		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
 		pieces[i] = PuzzlePiece(images[i], i);
 	}
 
 	// create a Puzzle
 	Puzzle myPuzzle = Puzzle(numPieces, pieces);
+
+	// load back img
+	// todo: make this optional / clean up
+	string filename = dir + "back.jpeg";
+	myPuzzle.backImg = imread(filename);
 
 	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
 	myPuzzle.process(process_verbose);
@@ -41,6 +46,19 @@ int main() {
 	// Test::displayEdgeMatches(myPuzzle);
 	// Test::testAllEdgePairs(myPuzzle, true);
 	// exit(0);
+
+	// test puzzle: set edges
+	pieces[1].edges[3].isEdge = false;
+	pieces[10].isEdge = true;
+	pieces[10].edges[0].isEdge = false;
+	pieces[9].isEdge = true;
+	pieces[9].edges[2].isEdge = false;
+	pieces[3].isEdge = true;
+	pieces[3].edges[0].isEdge = false;
+	pieces[3].edges[1].isEdge = false;
+	pieces[4].isEdge = true;
+	pieces[4].edges[3].isEdge = false;
+	pieces[2].edges[2].isEdge = false;
 
 	// assemble
 	start_time = chrono::steady_clock::now();
@@ -64,6 +82,7 @@ double EdgeOfPiece::edgeShrinkFactor = 5;
 int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
+vector<Scalar> PuzzlePiece::backColorBounds;
 
 pair<Mat, Point> EdgeOfPiece::rasterizeContour(vector<Point> contour, bool inverted) {
 
@@ -163,26 +182,123 @@ void PuzzlePiece::process(bool verbose) {
 	Scalar purple(128, 0, 128);
 	vector<Scalar> colors = {blue, red, green, purple};
 
-	// identify background color
+	/*
+	// TEST: bilateral filter
+	Mat smallImg;
+	resize(img, smallImg, Size(img.size[1]/5, img.size[0]/5));
+	Mat img_hsv;
+	cvtColor(smallImg, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1];
+	Mat filteredImg;
+	bilateralFilter(channel, filteredImg, 10, 80, 16, BORDER_DEFAULT); // I think larger neighborhoods take longer
+	Mat color_mask;
+	Canny(filteredImg, color_mask, 50, 100);
+	resize(color_mask, color_mask, img.size());
+	if(verbose) {
+		namedWindow("bilateral");
+		imshow("bilateral", smallImg);
+		waitKey(0);
+		imshow("bilateral", channel);
+		waitKey(0);
+		imshow("bilateral", filteredImg);
+		waitKey(0);
+		imshow("bilateral", color_mask);
+		waitKey(0);
+		destroyWindow("bilateral");
+	}
+	*/
+
+	/*
+	// TEST: adaptive threshold
 	Mat img_hsv;
 	cvtColor(img, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1]; // saturation
+	channel = 255 - channel; // invert
+	Mat smallImg;
+	resize(channel, smallImg, Size(channel.size[1]/5, channel.size[0]/5));
+	Mat filteredImg;
+	bilateralFilter(smallImg, filteredImg, 10, 80, 10, BORDER_DEFAULT); // I think larger neighborhoods take longer
+	resize(filteredImg, filteredImg, channel.size());
+	Mat dilated_piece;
+	adaptiveThreshold(filteredImg, dilated_piece, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, -10);  // blockSize must be odd
+	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(30, 30));  // err on the side of more
+	dilate(dilated_piece, dilated_piece, kernel);
+	Mat threshold;
+	adaptiveThreshold(filteredImg, threshold, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, 0);  // blockSize must be odd
+	Mat color_mask;
+	bitwise_and(dilated_piece, threshold, color_mask);
+	if(verbose) {
+		namedWindow("adaptive");
+		imshow("adaptive", img);
+		waitKey(0);
+		imshow("adaptive", channel);
+		waitKey(0);
+		imshow("adaptive", filteredImg);
+		waitKey(0);
+		imshow("adaptive", dilated_piece);
+		waitKey(0);
+		imshow("adaptive", threshold);
+		waitKey(0);
+		imshow("adaptive", color_mask);
+		waitKey(0);
+		destroyWindow("adaptive");
+	}
+	*/
+
+	/*
+	// TEST: otsu
+	Mat img_hsv;
+	cvtColor(img, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1]; // saturation
+	channel = 255 - channel; // invert bc piece has lower saturation
+	Mat smallChannel;
+	resize(channel, smallChannel, Size(channel.size[1]/5, channel.size[0]/5));
+	medianBlur(smallChannel, smallChannel, 255);
+	Mat background;
+	resize(smallChannel, background, channel.size());
+	Mat flat = channel - background;
+	Mat color_mask; // apply otsu
+	threshold(flat, color_mask, 0, 255, THRESH_BINARY+THRESH_OTSU);  //why red underline
+	if(verbose) {
+		namedWindow("otsu");
+		imshow("otsu", img);
+		waitKey(0);
+		imshow("otsu", channel);
+		waitKey(0);
+		imshow("otsu", background);
+		waitKey(0);
+		imshow("otsu", flat);
+		waitKey(0);
+		imshow("otsu", color_mask);
+		waitKey(0);
+		// imshow("otsu", color_mask);
+		// waitKey(0);
+		destroyWindow("otsu");
+	}
+	*/
+
+	// identify background color
+	// todo: clean this up using minMaxLoc()
+	Mat img_hsv;
+	cvtColor(img, img_hsv, COLOR_BGR2HSV);
+	blur(img_hsv, img_hsv, Size(5, 5)); // TEST
 	vector<Vec3b> backgroundColors;
 	int cornerSize = 50;
 	Mat topLeftCorner = img_hsv(Rect(0, 0, cornerSize, cornerSize));
 	Mat topRightCorner = img_hsv(Rect(img.size().width-cornerSize, 0, cornerSize, cornerSize));
 	Mat bottomLeftCorner = img_hsv(Rect(0, img.size().height-cornerSize, cornerSize, cornerSize));
 	Mat bottomRightCorner = img_hsv(Rect(img.size().width-cornerSize, img.size().height-cornerSize, cornerSize, cornerSize));
-	for(MatIterator_<Vec3b> it = topLeftCorner.begin<Vec3b>(), end=topLeftCorner.end<Vec3b>(); it != end; it++) {
-		backgroundColors.push_back(*it);
-	}
-	for(MatIterator_<Vec3b> it = topRightCorner.begin<Vec3b>(), end=topRightCorner.end<Vec3b>(); it != end; it++) {
-		backgroundColors.push_back(*it);
-	}
-	for(MatIterator_<Vec3b> it = bottomLeftCorner.begin<Vec3b>(), end=bottomLeftCorner.end<Vec3b>(); it != end; it++) {
-		backgroundColors.push_back(*it);
-	}
-	for(MatIterator_<Vec3b> it = bottomRightCorner.begin<Vec3b>(), end=bottomRightCorner.end<Vec3b>(); it != end; it++) {
-		backgroundColors.push_back(*it);
+	vector<Mat> cornerImgs = {topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner}; // this makes copies?
+	for(Mat cornerImg: cornerImgs) {
+		for(MatIterator_<Vec3b> it = cornerImg.begin<Vec3b>(), end=cornerImg.end<Vec3b>(); it != end; it++) {
+			backgroundColors.push_back(*it);
+		}
 	}
 	double h_channel_min = backgroundColors[0][0];
 	double h_channel_max = backgroundColors[0][0];
@@ -200,22 +316,39 @@ void PuzzlePiece::process(bool verbose) {
 		if(c[2] > v_channel_max) v_channel_max = c[2];
 		total_v += c[2];
 	}
-	double h_channel_width = h_channel_max - h_channel_min;
-	double s_channel_width = s_channel_max - s_channel_min;
-	double v_channel_width = v_channel_max - v_channel_min;
-	double v_avg = total_v / backgroundColors.size();
+	// double v_avg = total_v / backgroundColors.size();
 
 	// create color mask
 	Mat color_mask;
-	double hueBuffer = 2;  // fraction denominator of range that is added to each end
-	double satBuffer = 2;
-	double valueBuffer = 2;
-	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - h_channel_width/hueBuffer), max(0.0, s_channel_min - s_channel_width/satBuffer), max(0.0, v_channel_min - v_channel_width/valueBuffer));
-	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + h_channel_width/hueBuffer), min(255.0, s_channel_max + s_channel_width/satBuffer), min(255.0, v_channel_max + v_channel_width/valueBuffer));
+	double hueBuffer = 25;
+	double satBuffer = 15;
+	double valueBuffer = 255;
+	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - hueBuffer), max(0.0, s_channel_min - satBuffer), max(0.0, v_channel_min - valueBuffer));
+	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + hueBuffer), min(255.0, s_channel_max + satBuffer), min(255.0, v_channel_max + valueBuffer));
 	inRange(img_hsv, colorLowerBound, colorUpperBound, color_mask);
-	color_mask = 255 - color_mask;  // invert
+
+	// test
+	Mat backColorMask;
+	inRange(img_hsv, backColorBounds[0], backColorBounds[1], backColorMask);
 	if(verbose) {
+		namedWindow("back");
+		imshow("back", backColorMask);
+		waitKey(0);
+		destroyWindow("back");
+	}
+
+	color_mask = 255 - color_mask;  // invert
+	bitwise_and(color_mask, backColorMask, backColorMask);
+	color_mask = color_mask - backColorMask;
+
+	if(verbose) {
+		cout << "HSV lower bounds: " << colorLowerBound << endl;
+		cout << "HSV upper bounds: " << colorUpperBound << endl;
 		namedWindow("mask");
+		rectangle(color_mask, Rect(0, 0, cornerSize, cornerSize), 255, -1);
+		rectangle(color_mask, Rect(0, color_mask.rows-cornerSize, cornerSize, cornerSize), 255, -1);
+		rectangle(color_mask, Rect(color_mask.cols-cornerSize, 0, cornerSize, cornerSize), 255, -1);
+		rectangle(color_mask, Rect(color_mask.cols-cornerSize, color_mask.rows-cornerSize, cornerSize, cornerSize), 255, -1);
 		imshow("mask", color_mask);
 		waitKey(0);
 	}
@@ -229,11 +362,13 @@ void PuzzlePiece::process(bool verbose) {
 		destroyWindow("mask");
 	}
 
+	/*
 	// adjust the brightness level
 	if(PuzzlePiece::avgBrightness == 0) {
 		PuzzlePiece::avgBrightness = v_avg;
 	}
 	img = img * PuzzlePiece::avgBrightness / v_avg;
+	*/
 
 	// find contours
 	vector<vector<Point>> contours;
@@ -682,21 +817,15 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 			bestMatch.e1.rowRange(bestMatch.e1RowRange).copyTo(channel1(edge1Box));
 			rectangle(channel1, Point(0, bestMatch.e2RowRange.end), Point(bestMatch.windowWidth, channel1.rows), 255, -1);
 			bestMatch.e2.copyTo(channel3(Rect({}, bestMatch.e2.size())));
-			cout << "e1 is smaller" << endl;
-			cout << "row range: " << bestMatch.e2RowRange << endl;
-			cout << "e2 rect: " << Rect({}, bestMatch.e2.size()) << endl;
 		} else {
 			bestMatch.e1.copyTo(channel1(Rect({}, bestMatch.e1.size())));
 			Rect edge2Box = Rect(0, bestMatch.e1RowRange.start, bestMatch.windowWidth, bestMatch.windowHeight);
 			bestMatch.e2.rowRange(bestMatch.e2RowRange).copyTo(channel3(edge2Box));
 			rectangle(channel3, Point(0, 0), Point(bestMatch.windowWidth, bestMatch.e1RowRange.start), 255, -1);
-			cout << "e2 is smaller" << endl;
-			cout << "row range: " << bestMatch.e1RowRange << endl;
 		}
 		Mat bothEdges;
 		Mat channels[3] = {channel1, Mat::zeros(channel1.size(), CV_8UC1), channel3};
 		merge(channels, 3, bothEdges);
-		cout << "top left pixel: " << bothEdges.at<Vec3b>(0, 0) << endl;
 
 		cout << "score: " << bestMatch.score << endl;
 		namedWindow("edgeMatch");
@@ -896,7 +1025,32 @@ Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
 	pieces = _pieces;
 }
 
+// error handling?
+void Puzzle::getBackColor() {
+
+	Mat backImgHSV;
+	cvtColor(backImg, backImgHSV, COLOR_BGR2HSV);
+	blur(backImgHSV, backImgHSV, Size(10, 10));
+
+	vector<Mat> channels;
+	split(backImgHSV, channels);
+	double hMin;
+	double hMax;
+	double sMin;
+	double sMax;
+	// is this fn declared as pass by reference?
+	minMaxLoc(channels[0], &hMin, &hMax);
+	minMaxLoc(channels[1], &sMin, &sMax);
+
+	int hBuffer = 5;
+	int sBuffer = 5;
+	Scalar backColorMin = Scalar(max(0.0, hMin - hBuffer), max(0.0, sMin - sBuffer), 0);
+	Scalar backColorMax = Scalar(min(255.0, hMax + hBuffer), min(255.0, sMax + sBuffer), 255);
+	PuzzlePiece::backColorBounds = {backColorMin, backColorMax};
+}
+
 void Puzzle::process(bool verbose) {
+	getBackColor();
 	for(int i = 0; i < numPieces; i++) {
 		pieces[i].process(verbose);
 	}
@@ -1274,21 +1428,8 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	vector<vector<int>> idxs;
 
 	// close to false positive
-
-	idxs.push_back({10, 1, 9, 1});
-	idxs.push_back({10, 1, 16, 2});
-
 	idxs.push_back({12, 1, 14, 2});
 	idxs.push_back({12, 1, 10, 2});
-
-	idxs.push_back({14, 3, 1, 3});
-	idxs.push_back({14, 3, 3, 0});
-
-	idxs.push_back({15, 0, 8, 1});
-	idxs.push_back({15, 0, 15, 2});
-
-	idxs.push_back({15, 2, 13, 2});
-	idxs.push_back({15, 2, 15, 0});
 
 	// cout << "p to go back" << endl;
 	for (int i = 0; i < idxs.size(); ) {
