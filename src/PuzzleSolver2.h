@@ -64,7 +64,6 @@ public:
 	bool isEdge;
 	static double scalingLength;
 	static double avgBrightness;
-	static vector<Scalar> backColorBounds;
 	Point correctionShiftLeft;
 	Point correctionShiftUp;
 	double correctionAngleLeft;
@@ -113,7 +112,6 @@ public:
 	int columns;
 	vector<double> rowHs;
 	vector<double> colWs;
-	Mat backImg;
 
 	// search through all the pieces until it finds a match
 	// returns a pointer the piece with matching index
@@ -121,7 +119,6 @@ public:
 	PieceMatch match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool verbose=false); //finds the matching piece
 	vector<PieceMatch> match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, PuzzlePiece *upPiece, int edgeIndexOfUp, bool noEdges, bool verbose);
 
-	void getBackColor();
 	void process(bool verbose=false);
 	void assemble(bool verbose=false);
 	void print();
@@ -134,6 +131,8 @@ class Test {
 public:
 static void testAllEdgePairs(Puzzle myPuzzle, bool secondBest);
 static void displayEdgeMatches(Puzzle myPuzzle);
+
+static void prototyping();
 };
 
 #endif /* PUZZLESOLVER2_H_ */
