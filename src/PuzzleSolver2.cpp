@@ -33,11 +33,6 @@ int main() {
 	// create a Puzzle
 	Puzzle myPuzzle = Puzzle(numPieces, pieces);
 
-	// load back img
-	// todo: make this optional / clean up
-	string filename = dir + "back.jpeg";
-	myPuzzle.backImg = imread(filename);
-
 	chrono::time_point<chrono::steady_clock> start_time = chrono::steady_clock::now();
 	myPuzzle.process(process_verbose);
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
@@ -82,7 +77,6 @@ double EdgeOfPiece::edgeShrinkFactor = 5;
 int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
-vector<Scalar> PuzzlePiece::backColorBounds;
 
 pair<Mat, Point> EdgeOfPiece::rasterizeContour(vector<Point> contour, bool inverted) {
 
@@ -182,107 +176,6 @@ void PuzzlePiece::process(bool verbose) {
 	Scalar purple(128, 0, 128);
 	vector<Scalar> colors = {blue, red, green, purple};
 
-	/*
-	// TEST: bilateral filter
-	Mat smallImg;
-	resize(img, smallImg, Size(img.size[1]/5, img.size[0]/5));
-	Mat img_hsv;
-	cvtColor(smallImg, img_hsv, COLOR_BGR2HSV);
-	vector<Mat> channels;
-	split(img_hsv, channels);
-	Mat channel = channels[1];
-	Mat filteredImg;
-	bilateralFilter(channel, filteredImg, 10, 80, 16, BORDER_DEFAULT); // I think larger neighborhoods take longer
-	Mat color_mask;
-	Canny(filteredImg, color_mask, 50, 100);
-	resize(color_mask, color_mask, img.size());
-	if(verbose) {
-		namedWindow("bilateral");
-		imshow("bilateral", smallImg);
-		waitKey(0);
-		imshow("bilateral", channel);
-		waitKey(0);
-		imshow("bilateral", filteredImg);
-		waitKey(0);
-		imshow("bilateral", color_mask);
-		waitKey(0);
-		destroyWindow("bilateral");
-	}
-	*/
-
-	/*
-	// TEST: adaptive threshold
-	Mat img_hsv;
-	cvtColor(img, img_hsv, COLOR_BGR2HSV);
-	vector<Mat> channels;
-	split(img_hsv, channels);
-	Mat channel = channels[1]; // saturation
-	channel = 255 - channel; // invert
-	Mat smallImg;
-	resize(channel, smallImg, Size(channel.size[1]/5, channel.size[0]/5));
-	Mat filteredImg;
-	bilateralFilter(smallImg, filteredImg, 10, 80, 10, BORDER_DEFAULT); // I think larger neighborhoods take longer
-	resize(filteredImg, filteredImg, channel.size());
-	Mat dilated_piece;
-	adaptiveThreshold(filteredImg, dilated_piece, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, -10);  // blockSize must be odd
-	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(30, 30));  // err on the side of more
-	dilate(dilated_piece, dilated_piece, kernel);
-	Mat threshold;
-	adaptiveThreshold(filteredImg, threshold, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, 0);  // blockSize must be odd
-	Mat color_mask;
-	bitwise_and(dilated_piece, threshold, color_mask);
-	if(verbose) {
-		namedWindow("adaptive");
-		imshow("adaptive", img);
-		waitKey(0);
-		imshow("adaptive", channel);
-		waitKey(0);
-		imshow("adaptive", filteredImg);
-		waitKey(0);
-		imshow("adaptive", dilated_piece);
-		waitKey(0);
-		imshow("adaptive", threshold);
-		waitKey(0);
-		imshow("adaptive", color_mask);
-		waitKey(0);
-		destroyWindow("adaptive");
-	}
-	*/
-
-	/*
-	// TEST: otsu
-	Mat img_hsv;
-	cvtColor(img, img_hsv, COLOR_BGR2HSV);
-	vector<Mat> channels;
-	split(img_hsv, channels);
-	Mat channel = channels[1]; // saturation
-	channel = 255 - channel; // invert bc piece has lower saturation
-	Mat smallChannel;
-	resize(channel, smallChannel, Size(channel.size[1]/5, channel.size[0]/5));
-	medianBlur(smallChannel, smallChannel, 255);
-	Mat background;
-	resize(smallChannel, background, channel.size());
-	Mat flat = channel - background;
-	Mat color_mask; // apply otsu
-	threshold(flat, color_mask, 0, 255, THRESH_BINARY+THRESH_OTSU);  //why red underline
-	if(verbose) {
-		namedWindow("otsu");
-		imshow("otsu", img);
-		waitKey(0);
-		imshow("otsu", channel);
-		waitKey(0);
-		imshow("otsu", background);
-		waitKey(0);
-		imshow("otsu", flat);
-		waitKey(0);
-		imshow("otsu", color_mask);
-		waitKey(0);
-		// imshow("otsu", color_mask);
-		// waitKey(0);
-		destroyWindow("otsu");
-	}
-	*/
-
 	// identify background color
 	// todo: clean this up using minMaxLoc()
 	Mat img_hsv;
@@ -295,51 +188,39 @@ void PuzzlePiece::process(bool verbose) {
 	Mat bottomLeftCorner = img_hsv(Rect(0, img.size().height-cornerSize, cornerSize, cornerSize));
 	Mat bottomRightCorner = img_hsv(Rect(img.size().width-cornerSize, img.size().height-cornerSize, cornerSize, cornerSize));
 	vector<Mat> cornerImgs = {topLeftCorner, topRightCorner, bottomLeftCorner, bottomRightCorner}; // this makes copies?
+	int hChannelMin = topLeftCorner.at<Vec3b>(0, 0)[0];
+	int hChannelMax = hChannelMin;
+	int sChannelMin = topLeftCorner.at<Vec3b>(0, 0)[1];
+	int sChannelMax = sChannelMin;
+	int vChannelMin = topLeftCorner.at<Vec3b>(0, 0)[2];
+	int vChannelMax = vChannelMin;
 	for(Mat cornerImg: cornerImgs) {
-		for(MatIterator_<Vec3b> it = cornerImg.begin<Vec3b>(), end=cornerImg.end<Vec3b>(); it != end; it++) {
-			backgroundColors.push_back(*it);
-		}
+		vector<Mat> channels;
+		split(cornerImg, channels);
+		double hMin; double hMax;
+		double sMin; double sMax;
+		double vMin; double vMax;
+		minMaxLoc(channels[0], &hMin, &hMax);  // won't let hMin etc. be int
+		minMaxLoc(channels[1], &sMin, &sMax);
+		minMaxLoc(channels[2], &vMin, &vMax);
+
+		if(hMin < hChannelMin) hChannelMin = hMin;
+		if(hMax > hChannelMax) hChannelMax = hMax;
+		if(sMin < sChannelMin) sChannelMin = sMin;
+		if(sMax > sChannelMax) sChannelMax = sMax;
+		if(vMin < vChannelMin) vChannelMin = sMin;
+		if(vMax > vChannelMax) vChannelMax = sMax;
 	}
-	double h_channel_min = backgroundColors[0][0];
-	double h_channel_max = backgroundColors[0][0];
-	double s_channel_min = backgroundColors[0][1];
-	double s_channel_max = backgroundColors[0][1];
-	double v_channel_min = backgroundColors[0][2];
-	double v_channel_max = backgroundColors[0][2];
-	double total_v = 0;
-	for(Scalar c: backgroundColors) {
-		if(c[0] < h_channel_min) h_channel_min = c[0];
-		if(c[0] > h_channel_max) h_channel_max = c[0];
-		if(c[1] < s_channel_min) s_channel_min = c[1];
-		if(c[1] > s_channel_max) s_channel_max = c[1];
-		if(c[2] < v_channel_min) v_channel_min = c[2];
-		if(c[2] > v_channel_max) v_channel_max = c[2];
-		total_v += c[2];
-	}
-	// double v_avg = total_v / backgroundColors.size();
 
 	// create color mask
 	Mat color_mask;
 	double hueBuffer = 25;
 	double satBuffer = 15;
 	double valueBuffer = 255;
-	Scalar colorLowerBound = Scalar(max(0.0, h_channel_min - hueBuffer), max(0.0, s_channel_min - satBuffer), max(0.0, v_channel_min - valueBuffer));
-	Scalar colorUpperBound = Scalar(min(255.0, h_channel_max + hueBuffer), min(255.0, s_channel_max + satBuffer), min(255.0, v_channel_max + valueBuffer));
+	Scalar colorLowerBound = Scalar(max(0.0, hChannelMin - hueBuffer), max(0.0, sChannelMin - satBuffer), max(0.0, vChannelMin - valueBuffer));
+	Scalar colorUpperBound = Scalar(min(255.0, hChannelMax + hueBuffer), min(255.0, sChannelMax + satBuffer), min(255.0, vChannelMax + valueBuffer));
 	inRange(img_hsv, colorLowerBound, colorUpperBound, color_mask);
-
-	// test
-	Mat backColorMask;
-	inRange(img_hsv, backColorBounds[0], backColorBounds[1], backColorMask);
-	if(verbose) {
-		namedWindow("back");
-		imshow("back", backColorMask);
-		waitKey(0);
-		destroyWindow("back");
-	}
-
 	color_mask = 255 - color_mask;  // invert
-	bitwise_and(color_mask, backColorMask, backColorMask);
-	color_mask = color_mask - backColorMask;
 
 	if(verbose) {
 		cout << "HSV lower bounds: " << colorLowerBound << endl;
@@ -1025,32 +906,7 @@ Puzzle::Puzzle(int _numPieces, PuzzlePiece _pieces[]) {
 	pieces = _pieces;
 }
 
-// error handling?
-void Puzzle::getBackColor() {
-
-	Mat backImgHSV;
-	cvtColor(backImg, backImgHSV, COLOR_BGR2HSV);
-	blur(backImgHSV, backImgHSV, Size(10, 10));
-
-	vector<Mat> channels;
-	split(backImgHSV, channels);
-	double hMin;
-	double hMax;
-	double sMin;
-	double sMax;
-	// is this fn declared as pass by reference?
-	minMaxLoc(channels[0], &hMin, &hMax);
-	minMaxLoc(channels[1], &sMin, &sMax);
-
-	int hBuffer = 5;
-	int sBuffer = 5;
-	Scalar backColorMin = Scalar(max(0.0, hMin - hBuffer), max(0.0, sMin - sBuffer), 0);
-	Scalar backColorMax = Scalar(min(255.0, hMax + hBuffer), min(255.0, sMax + sBuffer), 255);
-	PuzzlePiece::backColorBounds = {backColorMin, backColorMax};
-}
-
 void Puzzle::process(bool verbose) {
-	getBackColor();
 	for(int i = 0; i < numPieces; i++) {
 		pieces[i].process(verbose);
 	}
@@ -1442,4 +1298,108 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 //		else i++;
 		i++;
 	}
+}
+
+void Test::prototyping() {
+
+	/*
+	// outline: bilateral filter
+	Mat smallImg;
+	resize(img, smallImg, Size(img.size[1]/5, img.size[0]/5));
+	Mat img_hsv;
+	cvtColor(smallImg, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1];
+	Mat filteredImg;
+	bilateralFilter(channel, filteredImg, 10, 80, 16, BORDER_DEFAULT); // I think larger neighborhoods take longer
+	Mat color_mask;
+	Canny(filteredImg, color_mask, 50, 100);
+	resize(color_mask, color_mask, img.size());
+	if(verbose) {
+		namedWindow("bilateral");
+		imshow("bilateral", smallImg);
+		waitKey(0);
+		imshow("bilateral", channel);
+		waitKey(0);
+		imshow("bilateral", filteredImg);
+		waitKey(0);
+		imshow("bilateral", color_mask);
+		waitKey(0);
+		destroyWindow("bilateral");
+	}
+	*/
+
+	/*
+	// outline: adaptive threshold
+	Mat img_hsv;
+	cvtColor(img, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1]; // saturation
+	channel = 255 - channel; // invert
+	Mat smallImg;
+	resize(channel, smallImg, Size(channel.size[1]/5, channel.size[0]/5));
+	Mat filteredImg;
+	bilateralFilter(smallImg, filteredImg, 10, 80, 10, BORDER_DEFAULT); // I think larger neighborhoods take longer
+	resize(filteredImg, filteredImg, channel.size());
+	Mat dilated_piece;
+	adaptiveThreshold(filteredImg, dilated_piece, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, -10);  // blockSize must be odd
+	Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(30, 30));  // err on the side of more
+	dilate(dilated_piece, dilated_piece, kernel);
+	Mat threshold;
+	adaptiveThreshold(filteredImg, threshold, 255, ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY, 301, 0);  // blockSize must be odd
+	Mat color_mask;
+	bitwise_and(dilated_piece, threshold, color_mask);
+	if(verbose) {
+		namedWindow("adaptive");
+		imshow("adaptive", img);
+		waitKey(0);
+		imshow("adaptive", channel);
+		waitKey(0);
+		imshow("adaptive", filteredImg);
+		waitKey(0);
+		imshow("adaptive", dilated_piece);
+		waitKey(0);
+		imshow("adaptive", threshold);
+		waitKey(0);
+		imshow("adaptive", color_mask);
+		waitKey(0);
+		destroyWindow("adaptive");
+	}
+	*/
+
+	/*
+	// outline: otsu
+	Mat img_hsv;
+	cvtColor(img, img_hsv, COLOR_BGR2HSV);
+	vector<Mat> channels;
+	split(img_hsv, channels);
+	Mat channel = channels[1]; // saturation
+	channel = 255 - channel; // invert bc piece has lower saturation
+	Mat smallChannel;
+	resize(channel, smallChannel, Size(channel.size[1]/5, channel.size[0]/5));
+	medianBlur(smallChannel, smallChannel, 255);
+	Mat background;
+	resize(smallChannel, background, channel.size());
+	Mat flat = channel - background;
+	Mat color_mask; // apply otsu
+	threshold(flat, color_mask, 0, 255, THRESH_BINARY+THRESH_OTSU);  //why red underline
+	if(verbose) {
+		namedWindow("otsu");
+		imshow("otsu", img);
+		waitKey(0);
+		imshow("otsu", channel);
+		waitKey(0);
+		imshow("otsu", background);
+		waitKey(0);
+		imshow("otsu", flat);
+		waitKey(0);
+		imshow("otsu", color_mask);
+		waitKey(0);
+		// imshow("otsu", color_mask);
+		// waitKey(0);
+		destroyWindow("otsu");
+	}
+	*/
 }
