@@ -44,29 +44,29 @@ int main() {
 
 	/*
 	// test puzzle: set edges
-	pieces[1].edges[3].isEdge = true;
+	pieces[1].edges[3].isFlat = true;
 	pieces[1].edges[3].rotCorrection = 0;
 	pieces[1].edges[3].shiftCorrection = 0;
 	pieces[10].isEdge = true;
-	pieces[10].edges[1].isEdge = true;
+	pieces[10].edges[1].isFlat = true;
 	pieces[10].edges[1].rotCorrection = 0;
 	pieces[10].edges[1].shiftCorrection = 0;
 	pieces[9].isEdge = true;
-	pieces[9].edges[2].isEdge = true;
+	pieces[9].edges[2].isFlat = true;
 	pieces[9].edges[2].rotCorrection = 0;
 	pieces[9].edges[2].shiftCorrection = 0;
 	pieces[3].isEdge = true;
-	pieces[3].edges[0].isEdge = true;
+	pieces[3].edges[0].isFlat = true;
 	pieces[3].edges[0].rotCorrection = 0;
 	pieces[3].edges[0].shiftCorrection = 0;
-	pieces[3].edges[1].isEdge = true;
+	pieces[3].edges[1].isFlat = true;
 	pieces[3].edges[1].rotCorrection = 0;
 	pieces[3].edges[1].shiftCorrection = 0;
 	pieces[4].isEdge = true;
-	pieces[4].edges[3].isEdge = true;
+	pieces[4].edges[3].isFlat = true;
 	pieces[4].edges[3].rotCorrection = 0;
 	pieces[4].edges[3].shiftCorrection = 0;
-	pieces[2].edges[2].isEdge = true;
+	pieces[2].edges[2].isFlat = true;
 	pieces[2].edges[2].rotCorrection = 0;
 	pieces[2].edges[2].shiftCorrection = 0;
 	*/
@@ -118,7 +118,7 @@ pair<Mat, Point> EdgeOfPiece::rasterizeContour(vector<Point> contour, bool inver
 // fit line to decide if the edge is flat.
 // if yes, calculate rotation and vertical shift required to line up the edge with border of puzzle.
 // if no, create raster images of the edge.
-void EdgeOfPiece::processEdge() {
+void EdgeOfPiece::checkFlatEdge() {
 
 	vector<Point>::const_iterator start_iter = edge.begin() + edge.size() * 2/10;
 	vector<Point>::const_iterator end_iter = edge.begin() + edge.size() * 8/10;
@@ -147,10 +147,13 @@ void EdgeOfPiece::processEdge() {
 		cout << "x0, y0, vx, vy: " << x0 << " " << y0 << " " << vx << " " << vy << endl;
 		cout << "processEdge shift correction: " << shiftCorrection << endl;
 		cout << "processEdge rot correction: " << rotCorrection << endl;
-		isEdge = true;
+		isFlat = true;
 		return;
 	}
-	isEdge = false;
+	isFlat = false;
+}
+
+void EdgeOfPiece::createRasterEdges() {
 
 	// create raster images of the edge
 	pair<Mat, Point> imgAndShift = rasterizeContour(edge, false);
@@ -483,33 +486,51 @@ void PuzzlePiece::process(bool verbose) {
 	}
 
 	// process edges: check for flat edges and create raster edge images
-	for(int i = 0; i < 4; i++) {
-		edges[i].processEdge();
+	for(EdgeOfPiece &e: edges) { e.checkFlatEdge(); }
+	isEdge = edges[0].isFlat + edges[1].isFlat + edges[2].isFlat + edges[3].isFlat;
+
+	// rotate edge pieces for easier comparison
+	if(isEdge) {
+		cout << "Piece " << number << endl;
+		double theta = 0;
+		for(EdgeOfPiece &e: edges) {
+			cout << "Flat? " << e.isFlat << endl;
+			if(e.isFlat) theta += e.rotCorrection;
+			cout << "new total angle: " << theta << endl;
+		}
+		if(isCorner()) theta /= 2;
+		cout << "angle after division: " << theta << endl;
+		rotate(center(), theta);
+		finalCorrectionAngle = theta;
 	}
-	isEdge = edges[0].isEdge + edges[1].isEdge + edges[2].isEdge + edges[3].isEdge;
+
+	// create raster images of edges
+	for(EdgeOfPiece &e: edges) {
+		if(!e.isFlat) { e.createRasterEdges(); }
+	}
 
 	if(verbose) {
-			// show the shifted / rotated edges
-			vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge};
-			for(int i = 0; i < 4; i++) {
-				for(Point &p: edge_vector[i]) {
-					p += Point(1000, 1000);  // shift for easier plotting
-				}
+		// show the shifted / rotated edges
+		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge};
+		for(int i = 0; i < 4; i++) {
+			for(Point &p: edge_vector[i]) {
+				p += Point(1000, 1000);  // shift for easier plotting
 			}
-			img_copy = img.clone();
-			for(int i = 0; i < 4; i++) {
-				if(!edges[i].isEdge) drawContours(img_copy, edge_vector, i, colors[i], 5);
-			}
-			imshow("contours", img_copy);
-			waitKey(0);
-
-			// show one of the raster edge images
-			if(!edges[0].isEdge) {
-				imshow("contours", edges[0].edgeImg);
-				waitKey(0);
-			}
-			destroyWindow("contours");
 		}
+		img_copy = img.clone();
+		for(int i = 0; i < 4; i++) {
+			if(!edges[i].isFlat) drawContours(img_copy, edge_vector, i, colors[i], 5);
+		}
+		imshow("contours", img_copy);
+		waitKey(0);
+
+		// show one of the raster edge images
+		if(!edges[0].isFlat) {
+			imshow("contours", edges[0].edgeImg);
+			waitKey(0);
+		}
+		destroyWindow("contours");
+	}
 }
 
 int PuzzlePiece::scan(vector<Point> scanLine, Point increment, int scanDepth, int maxBuffer) {
@@ -541,7 +562,7 @@ int PuzzlePiece::scan(vector<Point> scanLine, Point increment, int scanDepth, in
 }
 
 int PuzzlePiece::countEdges() {
-	return edges[0].isEdge + edges[1].isEdge + edges[2].isEdge + edges[3].isEdge;
+	return edges[0].isFlat + edges[1].isFlat + edges[2].isFlat + edges[3].isFlat;
 }
 
 bool PuzzlePiece::isCorner() {
@@ -551,13 +572,13 @@ bool PuzzlePiece::isCorner() {
 // return right index of top left corner
 // assumption: the piece has exactly 2 consecutive edges
 int PuzzlePiece::rootRightIndex() {
-	if(edges[0].isEdge) {
-		if(edges[1].isEdge) {
+	if(edges[0].isFlat) {
+		if(edges[1].isFlat) {
 			return 2;
 		}
 		else return 1;
 	}
-	else if(edges[1].isEdge) return 3;
+	else if(edges[1].isFlat) return 3;
 	else return 0;
 }
 
@@ -608,13 +629,14 @@ double EdgeOfPiece::edgeComparisonScore2(Mat edge, bool penalizeZeros) {
 // lower score is better.
 // "shift" and "theta" are corrections for edge 2.
 // edge2 images are rotated ~180 degrees for comparison.
-EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool verbose) {
+EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool flatEdges, bool verbose) {
 
 	bool firstMatch = true;
 	EdgeMatch bestMatch;
 
 	for(int i = 0; i < edge2.rotEdgeImgAngles.size(); i++) {
 
+		if(flatEdges && edge2.rotEdgeImgAngles[i] != 0) continue;  // no rotation allowed when matching flat edges
 		Mat rotEdgeImg = edge2.rotEdgeImgs[i];
 
 		int minHeight = min(edge1.edgeImg.rows, rotEdgeImg.rows);
@@ -737,8 +759,8 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 // check if piece 1 index idx1 is allowed to match with piece 2 index idx2,
 // based on whether a flat edge will be paired with a non-flat edge.
 bool Puzzle::allowedMatch(PuzzlePiece *piece1, int idx1, PuzzlePiece *piece2, int idx2) {
-	bool allowed1 = piece1->edges[PuzzlePiece::prevIndex(idx1)].isEdge == piece2->edges[PuzzlePiece::nextIndex(idx2)].isEdge;
-	bool allowed2 = piece1->edges[PuzzlePiece::nextIndex(idx1)].isEdge == piece2->edges[PuzzlePiece::prevIndex(idx2)].isEdge;
+	bool allowed1 = piece1->edges[PuzzlePiece::prevIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::nextIndex(idx2)].isFlat;
+	bool allowed2 = piece1->edges[PuzzlePiece::nextIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::prevIndex(idx2)].isFlat;
 	return allowed1 && allowed2;
 }
 
@@ -749,7 +771,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 	double bestMatchScore;
 	bool firstMatch = true;
 
-	if(piece->edges[edgeIndex].isEdge) {
+	if(piece->edges[edgeIndex].isFlat) {
 		cout << "ERROR: calling match() on a flat edge" << endl;
 		return bestMatch;
 	}
@@ -758,10 +780,10 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 		if(pieces[i].isConnected) continue;  // skip if already connected
 		if(edgesOnly && !pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdge) continue;  // skip if it's an edge
+			if(pieces[i].edges[j].isFlat) continue;  // skip if it's an edge
 			if(edgesOnly && !allowedMatch(piece, edgeIndex, &pieces[i], j)) continue;  // skip if flat edge would be paired with non-flat edge
 
-			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
+			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], edgesOnly, verbose);
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
 
 			if(firstMatch || currentMatch.score < bestMatchScore) {  // low score is best
@@ -791,7 +813,7 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 	double bestMatchScore;
 	bool firstMatch = true;
 
-	if(leftPiece->edges[edgeIndexOfLeft].isEdge || upPiece->edges[edgeIndexOfUp].isEdge) {
+	if(leftPiece->edges[edgeIndexOfLeft].isFlat || upPiece->edges[edgeIndexOfUp].isFlat) {
 		cout << "ERROR: calling match() on an edge piece" << endl;
 		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 		return matches;
@@ -801,10 +823,10 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 		if(pieces[i].isConnected) continue;  // skip if already connected
 		if(noEdges && pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isEdge || pieces[i].edges[(j+1)%4].isEdge) continue;  // skip if either connection is an edge
+			if(pieces[i].edges[j].isFlat || pieces[i].edges[(j+1)%4].isFlat) continue;  // skip if either connection is an edge
 
-			EdgeMatch edgeMatchLeft = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], verbose);
-			EdgeMatch edgeMatchUp = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], verbose);
+			EdgeMatch edgeMatchLeft = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], false, verbose);
+			EdgeMatch edgeMatchUp = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], false, verbose);
 			double score = edgeMatchLeft.score + edgeMatchUp.score;
 			cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " score " << score <<
 					" against Piece " << pieces[i].number << " with right index " << (j+2)%4  << endl;
@@ -891,7 +913,9 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 	Mat t = getRotationMatrix2D(rotationCenter, theta, 1);
 	warpAffine(img, img, t, img.size());
 	for(Point &p: outline) { p = rotatePoint(p, t); }
-	for(EdgeOfPiece &e: edges) { e.midpoint = rotatePoint(e.midpoint, t); }
+	for(EdgeOfPiece &e: edges) {
+		e.midpoint = rotatePoint(e.midpoint, t);
+	}
 
 	// rotate core and midpoints for big rotations
 	if(theta == 90) {
@@ -909,9 +933,15 @@ void PuzzlePiece::rotate(Point rotationCenter, double theta) {
 
 	// only for small corrections, and assuming rotation about center of piece
 	else if(theta < 90) {
+		// rotate edges
+		Mat t_zero = getRotationMatrix2D(Point(0, 0), theta, 1);
+		for(EdgeOfPiece &e: edges) {
+			for(Point &p: e.edge) p = rotatePoint(p, t_zero);
+		}
+
 		// rotate edge corrections
 		for(EdgeOfPiece &e: edges) {
-			if(e.isEdge) {
+			if(e.isFlat) {
 				e.shiftCorrection -= norm(center() - e.midpoint) * (1 - cos(theta * 3.14 / 180));
 			}
 		}
@@ -958,7 +988,7 @@ void Puzzle::assemble(bool verbose) {
 
 	// construct top edge
 	cout << "Constructing top edge" << endl;
-	while(!cursor->edges[cursor->rightIndex].isEdge && completedPuzzle[0].size() < numPieces) {
+	while(!cursor->edges[cursor->rightIndex].isFlat && completedPuzzle[0].size() < numPieces) {
 
 		PieceMatch matchingPiece = match(cursor, cursor->rightIndex, true, verbose);
 		cursor = matchingPiece.piece;
@@ -989,7 +1019,7 @@ void Puzzle::assemble(bool verbose) {
 	cout << "Constructing left edge" << endl;
 	cursor = completedPuzzle[0][0];  // reset cursor
 	for(int i = 1; i < rows; i++) {
-		if(cursor->edges[cursor->downIndex()].isEdge) {
+		if(cursor->edges[cursor->downIndex()].isFlat) {
 			cout << "ERROR: unexpected edge encountered" << endl;
 			return;
 		}
@@ -1071,24 +1101,15 @@ void Puzzle::display(bool verbose) {
 			PuzzlePiece *leftNeighbor = nullptr;
 			PuzzlePiece *upNeighbor = nullptr;
 
+			// set up / left neighbors
+			if(row != 0) { upNeighbor = completedPuzzle[row-1][col]; }
+			if(col != 0) { leftNeighbor = completedPuzzle[row][col-1]; }
+
 			// rotation corrections
 			// (rotate first bc shift depends on location of edge midpoints)
+			// top row and left column: already rotated during processing
 			double theta = 0;
-			if(row == 0 && col == 0) {  // top left corner
-				theta = (cursor->edges[cursor->leftIndex()].rotCorrection + cursor->edges[cursor->upIndex()].rotCorrection) / 2;
-			}  else if(col == 0) {  // left edge
-				upNeighbor = completedPuzzle[row-1][col];
-				theta = cursor->edges[cursor->leftIndex()].rotCorrection;
-				cout << "left edge rot correction: " << theta << endl;
-			} else if(row == 0) {  // top edge
-				leftNeighbor = completedPuzzle[row][col-1];
-				theta = cursor->edges[cursor->upIndex()].rotCorrection;
-				cout << "top edge rot correction: " << theta << endl;
-				cout << "up index: " << cursor->upIndex() << endl;
-				cout << "piece number: " << cursor->number << endl;
-			} else {  // most pieces
-				upNeighbor = completedPuzzle[row-1][col];
-				leftNeighbor = completedPuzzle[row][col-1];
+			if(row != 0 && col != 0) {
 				theta = (cursor->correctionAngleLeft + leftNeighbor->finalCorrectionAngle + cursor->correctionAngleUp + upNeighbor->finalCorrectionAngle) / 2;
 			}
 			cursor->finalCorrectionAngle = theta;
@@ -1207,8 +1228,9 @@ void Puzzle::display(bool verbose) {
 	waitKey(0);
 
 	// fill in gaps
+	// note: uses border_replicate so median is 0 near the edges
 	Mat blurredPuzzle;
-	medianBlur(completedPuzzleImg, blurredPuzzle, 101);
+	medianBlur(completedPuzzleImg, blurredPuzzle, 51);
 	Mat blurredPuzzleMask;
 	inRange(completedPuzzleImg, (0, 0, 0), (0, 0, 0), blurredPuzzleMask);
 	blurredPuzzle.copyTo(completedPuzzleImg, blurredPuzzleMask);
@@ -1324,7 +1346,7 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	// cout << "p to go back" << endl;
 	for (int i = 0; i < idxs.size(); ) {
 		vector<int> v = idxs[i];
-		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], true);
+		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], false, true);
 
 //		string nextStr;
 //		cin >> nextStr;
