@@ -34,7 +34,7 @@ public:
 	vector<double> rotEdgeImgAngles;
 	Point rasterShift;  // amount edge center is shifted when made into raster image
 	vector<Point> rotRasterShifts;
-	bool isEdge = false;
+	bool isFlat = false;
 	double rotCorrection;  // for flat edges
 	int shiftCorrection; // for flat edges
 	static int edgeHeightBuffer;  // not scaled by pixelShrinkFactor
@@ -42,10 +42,11 @@ public:
 	static int pixelShift; // for edge comparison
 
 	pair<Mat, Point> rasterizeContour(vector<Point> contour, bool inverted);
-	void processEdge();
+	void checkFlatEdge();
+	void createRasterEdges();
 	static double edgeComparisonScore(Mat edge1, Mat edge2);
 	static double edgeComparisonScore2(Mat edge, bool penalizeZeros);
-	static EdgeMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool verbose=false);
+	static EdgeMatch matchEdges(EdgeOfPiece firstEdge, EdgeOfPiece other, bool flatEdges=false, bool verbose=false);
 };
 
 class PuzzlePiece {
