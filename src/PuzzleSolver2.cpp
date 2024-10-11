@@ -1206,6 +1206,15 @@ void Puzzle::display(bool verbose) {
 	imshow("completed puzzle", completedPuzzleImg);
 	waitKey(0);
 
+	// fill in gaps
+	Mat blurredPuzzle;
+	medianBlur(completedPuzzleImg, blurredPuzzle, 101);
+	Mat blurredPuzzleMask;
+	inRange(completedPuzzleImg, (0, 0, 0), (0, 0, 0), blurredPuzzleMask);
+	blurredPuzzle.copyTo(completedPuzzleImg, blurredPuzzleMask);
+	imshow("completed puzzle", completedPuzzleImg);
+	waitKey(0);
+
 	// show piece numbers
 	for(int col = 0; col < columns; col++) {
 			for(int row = 0; row < rows; row++) {
