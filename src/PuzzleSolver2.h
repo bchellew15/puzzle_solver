@@ -113,6 +113,7 @@ public:
 	vector<double> rowHs;
 	vector<double> colWs;
 
+	bool allowedMatch(PuzzlePiece *piece1, int idx1, PuzzlePiece *piece2, int idx2);
 	// search through all the pieces until it finds a match
 	// returns a pointer the piece with matching index
 	// if no match, returns NULL

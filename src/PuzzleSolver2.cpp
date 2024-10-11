@@ -13,17 +13,17 @@ using namespace cv;
 
 int main() {
 
-	bool process_verbose = true;
+	bool process_verbose = false;
 	bool match_verbose = false;
 	bool display_verbose = false;
 
-	int numPieces = 12;
+	int numPieces = 16;
 	cout << numPieces << " pieces" << endl;
 
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_12/";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_pink/";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -42,18 +42,34 @@ int main() {
 	// Test::testAllEdgePairs(myPuzzle, true);
 	// exit(0);
 
+	/*
 	// test puzzle: set edges
-	pieces[1].edges[3].isEdge = false;
+	pieces[1].edges[3].isEdge = true;
+	pieces[1].edges[3].rotCorrection = 0;
+	pieces[1].edges[3].shiftCorrection = 0;
 	pieces[10].isEdge = true;
-	pieces[10].edges[0].isEdge = false;
+	pieces[10].edges[1].isEdge = true;
+	pieces[10].edges[1].rotCorrection = 0;
+	pieces[10].edges[1].shiftCorrection = 0;
 	pieces[9].isEdge = true;
-	pieces[9].edges[2].isEdge = false;
+	pieces[9].edges[2].isEdge = true;
+	pieces[9].edges[2].rotCorrection = 0;
+	pieces[9].edges[2].shiftCorrection = 0;
 	pieces[3].isEdge = true;
-	pieces[3].edges[0].isEdge = false;
-	pieces[3].edges[1].isEdge = false;
+	pieces[3].edges[0].isEdge = true;
+	pieces[3].edges[0].rotCorrection = 0;
+	pieces[3].edges[0].shiftCorrection = 0;
+	pieces[3].edges[1].isEdge = true;
+	pieces[3].edges[1].rotCorrection = 0;
+	pieces[3].edges[1].shiftCorrection = 0;
 	pieces[4].isEdge = true;
-	pieces[4].edges[3].isEdge = false;
-	pieces[2].edges[2].isEdge = false;
+	pieces[4].edges[3].isEdge = true;
+	pieces[4].edges[3].rotCorrection = 0;
+	pieces[4].edges[3].shiftCorrection = 0;
+	pieces[2].edges[2].isEdge = true;
+	pieces[2].edges[2].rotCorrection = 0;
+	pieces[2].edges[2].shiftCorrection = 0;
+	*/
 
 	// assemble
 	start_time = chrono::steady_clock::now();
@@ -73,8 +89,8 @@ int main() {
 }
 
 int EdgeOfPiece::edgeHeightBuffer = 5;
-double EdgeOfPiece::edgeShrinkFactor = 5;
-int EdgeOfPiece::pixelShift = 5 / EdgeOfPiece::edgeShrinkFactor;
+double EdgeOfPiece::edgeShrinkFactor = 5;  // TEST
+int EdgeOfPiece::pixelShift = 1;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
 
@@ -180,7 +196,7 @@ void PuzzlePiece::process(bool verbose) {
 	// todo: clean this up using minMaxLoc()
 	Mat img_hsv;
 	cvtColor(img, img_hsv, COLOR_BGR2HSV);
-	blur(img_hsv, img_hsv, Size(5, 5)); // TEST
+	blur(img_hsv, img_hsv, Size(10, 10)); // TEST
 	vector<Vec3b> backgroundColors;
 	int cornerSize = 50;
 	Mat topLeftCorner = img_hsv(Rect(0, 0, cornerSize, cornerSize));
@@ -214,9 +230,9 @@ void PuzzlePiece::process(bool verbose) {
 
 	// create color mask
 	Mat color_mask;
-	double hueBuffer = 25;
-	double satBuffer = 15;
-	double valueBuffer = 255;
+	double hueBuffer = 15;
+	double satBuffer = 35;
+	double valueBuffer = 255;  // 255
 	Scalar colorLowerBound = Scalar(max(0.0, hChannelMin - hueBuffer), max(0.0, sChannelMin - satBuffer), max(0.0, vChannelMin - valueBuffer));
 	Scalar colorUpperBound = Scalar(min(255.0, hChannelMax + hueBuffer), min(255.0, sChannelMax + satBuffer), min(255.0, vChannelMax + valueBuffer));
 	inRange(img_hsv, colorLowerBound, colorUpperBound, color_mask);
@@ -718,6 +734,14 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool ver
 	return bestMatch;
 }
 
+// check if piece 1 index idx1 is allowed to match with piece 2 index idx2,
+// based on whether a flat edge will be paired with a non-flat edge.
+bool Puzzle::allowedMatch(PuzzlePiece *piece1, int idx1, PuzzlePiece *piece2, int idx2) {
+	bool allowed1 = piece1->edges[PuzzlePiece::prevIndex(idx1)].isEdge == piece2->edges[PuzzlePiece::nextIndex(idx2)].isEdge;
+	bool allowed2 = piece1->edges[PuzzlePiece::nextIndex(idx1)].isEdge == piece2->edges[PuzzlePiece::prevIndex(idx2)].isEdge;
+	return allowed1 && allowed2;
+}
+
 // search through remaining pieces and return best match for edge "edgeIndex" of piece "piece"
 PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool verbose) {
 
@@ -735,6 +759,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 		if(edgesOnly && !pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
 			if(pieces[i].edges[j].isEdge) continue;  // skip if it's an edge
+			if(edgesOnly && !allowedMatch(piece, edgeIndex, &pieces[i], j)) continue;  // skip if flat edge would be paired with non-flat edge
 
 			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], verbose);
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
