@@ -23,7 +23,7 @@ int main() {
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_pink/";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_darkgreen/";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -38,38 +38,38 @@ int main() {
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
-	// Test::displayEdgeMatches(myPuzzle);
-	// Test::testAllEdgePairs(myPuzzle, true);
-	// exit(0);
-
 	/*
 	// test puzzle: set edges
-	pieces[1].edges[3].isFlat = true;
-	pieces[1].edges[3].rotCorrection = 0;
-	pieces[1].edges[3].shiftCorrection = 0;
+	pieces[6].edges[3].isFlat = true;
+	pieces[6].edges[3].rotCorrection = 0;
+	pieces[6].edges[3].shiftCorrection = 0;
 	pieces[10].isEdge = true;
 	pieces[10].edges[1].isFlat = true;
 	pieces[10].edges[1].rotCorrection = 0;
 	pieces[10].edges[1].shiftCorrection = 0;
 	pieces[9].isEdge = true;
-	pieces[9].edges[2].isFlat = true;
-	pieces[9].edges[2].rotCorrection = 0;
-	pieces[9].edges[2].shiftCorrection = 0;
+	pieces[9].edges[3].isFlat = true;
+	pieces[9].edges[3].rotCorrection = 0;
+	pieces[9].edges[3].shiftCorrection = 0;
 	pieces[3].isEdge = true;
-	pieces[3].edges[0].isFlat = true;
-	pieces[3].edges[0].rotCorrection = 0;
-	pieces[3].edges[0].shiftCorrection = 0;
 	pieces[3].edges[1].isFlat = true;
 	pieces[3].edges[1].rotCorrection = 0;
 	pieces[3].edges[1].shiftCorrection = 0;
+	pieces[3].edges[2].isFlat = true;
+	pieces[3].edges[2].rotCorrection = 0;
+	pieces[3].edges[2].shiftCorrection = 0;
 	pieces[4].isEdge = true;
-	pieces[4].edges[3].isFlat = true;
-	pieces[4].edges[3].rotCorrection = 0;
-	pieces[4].edges[3].shiftCorrection = 0;
-	pieces[2].edges[2].isFlat = true;
-	pieces[2].edges[2].rotCorrection = 0;
-	pieces[2].edges[2].shiftCorrection = 0;
+	pieces[4].edges[0].isFlat = true;
+	pieces[4].edges[0].rotCorrection = 0;
+	pieces[4].edges[0].shiftCorrection = 0;
+	pieces[2].edges[3].isFlat = true;
+	pieces[2].edges[3].rotCorrection = 0;
+	pieces[2].edges[3].shiftCorrection = 0;
 	*/
+
+	// Test::displayEdgeMatches(myPuzzle);
+	// Test::testAllEdgePairs(myPuzzle, true);
+	// exit(0);
 
 	// assemble
 	start_time = chrono::steady_clock::now();
@@ -141,16 +141,25 @@ void EdgeOfPiece::checkFlatEdge() {
 	}
 	double avgDist = totalDist / edge.size();
 
-	if(avgDist < 10) {
+	isFlat = avgDist < 10;
+	if(isFlat) {
 		rotCorrection = atan(vy / vx) * 180 / 3.14;
 		shiftCorrection = -(y0 - vy/vx*x0);
 		cout << "x0, y0, vx, vy: " << x0 << " " << y0 << " " << vx << " " << vy << endl;
 		cout << "processEdge shift correction: " << shiftCorrection << endl;
 		cout << "processEdge rot correction: " << rotCorrection << endl;
 		isFlat = true;
-		return;
 	}
-	isFlat = false;
+
+	// check if tab or blank
+	vector<int> y_values;
+	for(Point p: middleOfEdge) {
+		y_values.push_back(p.y);
+	}
+	int flat_y = (y_values.front() + y_values.back()) / 2;
+	int max_y = *max_element(y_values.begin(), y_values.end()) - flat_y;
+	int min_y = *min_element(y_values.begin(), y_values.end()) - flat_y;
+	isTab = abs(max_y) > abs(min_y);
 }
 
 void EdgeOfPiece::createRasterEdges() {
@@ -491,15 +500,11 @@ void PuzzlePiece::process(bool verbose) {
 
 	// rotate edge pieces for easier comparison
 	if(isEdge) {
-		cout << "Piece " << number << endl;
 		double theta = 0;
 		for(EdgeOfPiece &e: edges) {
-			cout << "Flat? " << e.isFlat << endl;
 			if(e.isFlat) theta += e.rotCorrection;
-			cout << "new total angle: " << theta << endl;
 		}
 		if(isCorner()) theta /= 2;
-		cout << "angle after division: " << theta << endl;
 		rotate(center(), theta);
 		finalCorrectionAngle = theta;
 	}
@@ -758,10 +763,13 @@ EdgeMatch EdgeOfPiece::matchEdges(EdgeOfPiece edge1, EdgeOfPiece edge2, bool fla
 
 // check if piece 1 index idx1 is allowed to match with piece 2 index idx2,
 // based on whether a flat edge will be paired with a non-flat edge.
+// also verify that one is a tab and the other is a blank, and neither are flat.
 bool Puzzle::allowedMatch(PuzzlePiece *piece1, int idx1, PuzzlePiece *piece2, int idx2) {
-	bool allowed1 = piece1->edges[PuzzlePiece::prevIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::nextIndex(idx2)].isFlat;
-	bool allowed2 = piece1->edges[PuzzlePiece::nextIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::prevIndex(idx2)].isFlat;
-	return allowed1 && allowed2;
+	bool allowed1 = !(piece1->edges[idx1].isFlat || piece2->edges[idx2].isFlat);
+	bool allowed2 = piece1->edges[PuzzlePiece::prevIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::nextIndex(idx2)].isFlat;
+	bool allowed3 = piece1->edges[PuzzlePiece::nextIndex(idx1)].isFlat == piece2->edges[PuzzlePiece::prevIndex(idx2)].isFlat;
+	bool allowed4 = piece1->edges[idx1].isTab != piece2->edges[idx2].isTab;
+	return allowed1 && allowed2 && allowed3 && allowed4;
 }
 
 // search through remaining pieces and return best match for edge "edgeIndex" of piece "piece"
@@ -780,8 +788,7 @@ PieceMatch Puzzle::match(PuzzlePiece *piece, int edgeIndex, bool edgesOnly, bool
 		if(pieces[i].isConnected) continue;  // skip if already connected
 		if(edgesOnly && !pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isFlat) continue;  // skip if it's an edge
-			if(edgesOnly && !allowedMatch(piece, edgeIndex, &pieces[i], j)) continue;  // skip if flat edge would be paired with non-flat edge
+			if(!allowedMatch(piece, edgeIndex, &pieces[i], j)) continue;  // skip if flat edge would be paired with non-flat edge or both tabs/blanks
 
 			EdgeMatch currentMatch = EdgeOfPiece::matchEdges(piece->edges[edgeIndex], pieces[i].edges[j], edgesOnly, verbose);
 			cout << "Piece " << piece->number << " scores " << currentMatch.score << " against index " << j << " of piece " << i+1 << endl;
@@ -823,7 +830,8 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 		if(pieces[i].isConnected) continue;  // skip if already connected
 		if(noEdges && pieces[i].isEdge) continue;
 		for(int j = 0; j < 4; j++) {
-			if(pieces[i].edges[j].isFlat || pieces[i].edges[(j+1)%4].isFlat) continue;  // skip if either connection is an edge
+			if(!allowedMatch(leftPiece, edgeIndexOfLeft, &pieces[i], j)) continue;
+			if(!allowedMatch(upPiece, edgeIndexOfUp, &pieces[i], (j+1)%4)) continue;
 
 			EdgeMatch edgeMatchLeft = EdgeOfPiece::matchEdges(leftPiece->edges[edgeIndexOfLeft], pieces[i].edges[j], false, verbose);
 			EdgeMatch edgeMatchUp = EdgeOfPiece::matchEdges(upPiece->edges[edgeIndexOfUp], pieces[i].edges[(j+1)%4], false, verbose);
@@ -851,7 +859,7 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 	}
 
 	cout << "Pieces " << leftPiece->number << " and " << upPiece->number << " match Piece "
-			<< bestMatchLeft.piece->number << " with right index " << bestMatchLeft.edgeIndex  << endl;
+			<< bestMatchLeft.piece->number << " with right index " << PuzzlePiece::oppIndex(bestMatchLeft.edgeIndex)  << endl;
 	vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 	return matches;
 }
@@ -1339,20 +1347,16 @@ void Test::displayEdgeMatches(Puzzle myPuzzle) {
 	// uses piece numbers, NOT indices
 	vector<vector<int>> idxs;
 
-	// close to false positive
-	idxs.push_back({12, 1, 14, 2});
-	idxs.push_back({12, 1, 10, 2});
+	idxs.push_back({2, 3, 9, 3});
+	idxs.push_back({2, 3, 8, 2});
+	idxs.push_back({2, 3, 3, 1});
 
-	// cout << "p to go back" << endl;
-	for (int i = 0; i < idxs.size(); ) {
+	idxs.push_back({9, 1, 8, 2});
+	idxs.push_back({9, 1, 3, 1});
+
+	for (int i = 0; i < idxs.size(); i++) {
 		vector<int> v = idxs[i];
 		EdgeOfPiece::matchEdges(pieces[v[0]-1].edges[v[1]], pieces[v[2]-1].edges[v[3]], false, true);
-
-//		string nextStr;
-//		cin >> nextStr;
-//		if(nextStr == "p") i--;
-//		else i++;
-		i++;
 	}
 }
 

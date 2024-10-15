@@ -35,6 +35,7 @@ public:
 	Point rasterShift;  // amount edge center is shifted when made into raster image
 	vector<Point> rotRasterShifts;
 	bool isFlat = false;
+	bool isTab = true;
 	double rotCorrection;  // for flat edges
 	int shiftCorrection; // for flat edges
 	static int edgeHeightBuffer;  // not scaled by pixelShrinkFactor
