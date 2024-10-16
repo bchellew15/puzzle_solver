@@ -13,7 +13,7 @@ using namespace cv;
 
 int main() {
 
-	bool process_verbose = false;
+	bool process_verbose = true;
 	bool match_verbose = false;
 	bool display_verbose = false;
 
@@ -23,7 +23,7 @@ int main() {
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_darkgreen/";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_shark_back/";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -38,34 +38,23 @@ int main() {
 	chrono::time_point<chrono::steady_clock> end_time = chrono::steady_clock::now();
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
-	/*
 	// test puzzle: set edges
-	pieces[6].edges[3].isFlat = true;
-	pieces[6].edges[3].rotCorrection = 0;
-	pieces[6].edges[3].shiftCorrection = 0;
+	pieces[8].edges[2].isFlat = true;
+	pieces[1].edges[0].isFlat = true;
+
+	pieces[2].isEdge = true;
+	pieces[2].edges[0].isFlat = true;
+	pieces[14].isEdge = true;
+	pieces[14].edges[2].isFlat = true;
+
 	pieces[10].isEdge = true;
-	pieces[10].edges[1].isFlat = true;
-	pieces[10].edges[1].rotCorrection = 0;
-	pieces[10].edges[1].shiftCorrection = 0;
-	pieces[9].isEdge = true;
-	pieces[9].edges[3].isFlat = true;
-	pieces[9].edges[3].rotCorrection = 0;
-	pieces[9].edges[3].shiftCorrection = 0;
-	pieces[3].isEdge = true;
-	pieces[3].edges[1].isFlat = true;
-	pieces[3].edges[1].rotCorrection = 0;
-	pieces[3].edges[1].shiftCorrection = 0;
-	pieces[3].edges[2].isFlat = true;
-	pieces[3].edges[2].rotCorrection = 0;
-	pieces[3].edges[2].shiftCorrection = 0;
+	pieces[10].edges[0].isFlat = true;
+	pieces[13].isEdge = true;
+	pieces[13].edges[0].isFlat = true;
+
 	pieces[4].isEdge = true;
 	pieces[4].edges[0].isFlat = true;
-	pieces[4].edges[0].rotCorrection = 0;
-	pieces[4].edges[0].shiftCorrection = 0;
-	pieces[2].edges[3].isFlat = true;
-	pieces[2].edges[3].rotCorrection = 0;
-	pieces[2].edges[3].shiftCorrection = 0;
-	*/
+	pieces[4].edges[3].isFlat = true;
 
 	// Test::displayEdgeMatches(myPuzzle);
 	// Test::testAllEdgePairs(myPuzzle, true);
@@ -242,7 +231,7 @@ void PuzzlePiece::process(bool verbose) {
 
 	// create color mask
 	Mat color_mask;
-	double hueBuffer = 15;
+	double hueBuffer = 10;
 	double satBuffer = 35;
 	double valueBuffer = 255;  // 255
 	Scalar colorLowerBound = Scalar(max(0.0, hChannelMin - hueBuffer), max(0.0, sChannelMin - satBuffer), max(0.0, vChannelMin - valueBuffer));
@@ -297,51 +286,42 @@ void PuzzlePiece::process(bool verbose) {
 	}
 
 	// identify the biggest contours by area
-	vector<Point> firstContour = contours[0];
-	vector<Point> secondContour = contours[1];
-	double maxSize = contourArea(firstContour);
-	double secondMaxSize = contourArea(secondContour);
+	vector<Point> contour1 = contours[0];
+	vector<Point> contour2 = contours[1];
+	double maxSize = contourArea(contour1);
+	double secondMaxSize = contourArea(contour2);
 	for(int i = 1; i < contours.size(); i++) {
 		double currentArea = contourArea(contours[i]);
 		if(currentArea > maxSize) {
 			secondMaxSize = maxSize;
-			secondContour = firstContour;
+			contour2 = contour1;
 			maxSize = currentArea;
-			firstContour = contours[i];
+			contour1 = contours[i];
 		}
 		else if(currentArea > secondMaxSize) {
 			secondMaxSize = currentArea;
-			secondContour = contours[i];
+			contour2 = contours[i];
 		}
 	}
 
-	// check which one is the circle
-	double firstArea = contourArea(firstContour);
-	double secondArea = contourArea(secondContour);
-	double pi = atan(1)*4;
-	Rect firstBox = boundingRect(firstContour);
-	Rect secondBox = boundingRect(secondContour);
-	double firstRadius = max(firstBox.width, firstBox.height) / 2;
-	double secondRadius = max(secondBox.width, secondBox.height) / 2;
-	double firstCircleArea = pi * pow(firstRadius, 2);
-	double secondCircleArea = pi * pow(secondRadius, 2);
-	// assign coin and outline based on circumscribed circle
+	// check which one is the circle by comparing perimeter and area
+	double area1 = contourArea(contour1);
+	double perim1 = arcLength(contour1, true);
+	double area2 = contourArea(contour2);
+	double perim2 = arcLength(contour2, true);
+
 	vector<Point> coin;
-	double coinRadius;
-	double outlineRadius;
-	if(firstCircleArea / firstArea > secondCircleArea / secondArea) {
-		coin = secondContour;
-		coinRadius = secondRadius;
-		outline = firstContour;
-		outlineRadius = firstRadius;
-		core = firstBox;
+	if(area2 / pow(perim2, 2) > area1 / pow(perim1, 2)) {
+		coin = contour2;
+		outline = contour1;
 	} else {
-		coin = firstContour;
-		coinRadius = firstRadius;
-		outline = secondContour;
-		outlineRadius = secondRadius;
-		core = secondBox;
+		coin = contour1;
+		outline = contour2;
 	}
+
+	core = boundingRect(outline);
+	Rect coinBox = boundingRect(coin);
+	double coinRadius = max(coinBox.width, coinBox.height) / 2;
 
 	// TEST: output contour points
 	// draw just the outline
