@@ -13,7 +13,7 @@ using namespace cv;
 
 int main() {
 
-	bool process_verbose = true;
+	bool process_verbose = false;
 	bool match_verbose = false;
 	bool display_verbose = false;
 
@@ -23,7 +23,7 @@ int main() {
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_shark_back/";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_pink/";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -39,22 +39,21 @@ int main() {
 	cout << "Processing time: " << chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count() << endl;
 
 	// test puzzle: set edges
+	/*
 	pieces[8].edges[2].isFlat = true;
 	pieces[1].edges[0].isFlat = true;
-
 	pieces[2].isEdge = true;
 	pieces[2].edges[0].isFlat = true;
 	pieces[14].isEdge = true;
 	pieces[14].edges[2].isFlat = true;
-
 	pieces[10].isEdge = true;
 	pieces[10].edges[0].isFlat = true;
 	pieces[13].isEdge = true;
 	pieces[13].edges[0].isFlat = true;
-
 	pieces[4].isEdge = true;
 	pieces[4].edges[0].isFlat = true;
-	pieces[4].edges[3].isFlat = true;
+	pieces[4].edges[1].isFlat = true;
+	*/
 
 	// Test::displayEdgeMatches(myPuzzle);
 	// Test::testAllEdgePairs(myPuzzle, true);
@@ -78,7 +77,7 @@ int main() {
 }
 
 int EdgeOfPiece::edgeHeightBuffer = 5;
-double EdgeOfPiece::edgeShrinkFactor = 5;  // TEST
+double EdgeOfPiece::edgeShrinkFactor = 5;
 int EdgeOfPiece::pixelShift = 1;
 double PuzzlePiece::scalingLength = 0;
 double PuzzlePiece::avgBrightness = 0;
@@ -833,7 +832,7 @@ vector<PieceMatch> Puzzle::match2(PuzzlePiece *leftPiece, int edgeIndexOfLeft, P
 	}
 
 	if(bestMatchLeft.piece == nullptr) {
-		cout << "ERROR: remaining pieces have no adjacent connections." << endl;
+		cout << "ERROR: remaining pieces have no adjacent allowed connections." << endl;
 		vector<PieceMatch> matches = {bestMatchLeft, bestMatchUp};
 		return matches;
 	}
