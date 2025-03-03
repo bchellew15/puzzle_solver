@@ -13,7 +13,7 @@ using namespace cv;
 
 int main() {
 
-	bool process_verbose = false;
+	bool process_verbose = true;
 	bool match_verbose = false;
 	bool display_verbose = false;
 
@@ -23,7 +23,7 @@ int main() {
 	// load images
 	Mat images[numPieces];
 	PuzzlePiece pieces[numPieces];
-	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_pink/";
+	string dir = "/Users/blakechellew/Documents/Code/workspace/PuzzleSolver2/Pieces_16_shark/";
 	for( int i = 0; i < numPieces; i++) {
 		string filename = dir + "Piece" + to_string(i+1) + ".jpeg";
 		images[i] = imread(filename);
@@ -192,6 +192,10 @@ void PuzzlePiece::process(bool verbose) {
 	Scalar purple(128, 0, 128);
 	vector<Scalar> colors = {blue, red, green, purple};
 
+	// for visualizations
+	int line_thickness = 20;
+	int draw_point_size = 30;
+
 	// identify background color
 	// todo: clean this up using minMaxLoc()
 	Mat img_hsv;
@@ -278,7 +282,7 @@ void PuzzlePiece::process(bool verbose) {
 	Mat img_copy = img.clone();
 	if(verbose) {
 		cout << "display all contours" << endl;
-		drawContours(img_copy, contours, -1, blue, 5);
+		drawContours(img_copy, contours, -1, blue, line_thickness);
 		namedWindow("contours");
 		imshow("contours", img_copy);
 		waitKey(0);
@@ -357,8 +361,8 @@ void PuzzlePiece::process(bool verbose) {
 
 		// show coin in red
 		img_copy = img.clone();
-		drawContours(img_copy, contours, 0, blue, 5);
-		drawContours(img_copy, contours, 1, red, 5);
+		drawContours(img_copy, contours, 0, blue, line_thickness);
+		drawContours(img_copy, contours, 1, red, line_thickness);
 		imshow("contours", img_copy);
 		waitKey(0);
 
@@ -437,16 +441,15 @@ void PuzzlePiece::process(bool verbose) {
 
 	if(verbose) {
 		// reset the image and plot the edges
-		vector<vector<Point>> edge_vector = {edges[0].edge, edges[1].edge, edges[2].edge, edges[3].edge};
 		img_copy = img.clone();
-		drawContours(img_copy, edge_vector, 0, blue, 5);
-		drawContours(img_copy, edge_vector, 1, red, 5);
-		drawContours(img_copy, edge_vector, 2, green, 5);
-		drawContours(img_copy, edge_vector, 3, purple, 5);
-		circle(img_copy, outline[cornerIndices["TL"]], 5, blue, 15);
-		circle(img_copy, outline[cornerIndices["TR"]], 5, red, 15);
-		circle(img_copy, outline[cornerIndices["BL"]], 5, green, 15);
-		circle(img_copy, outline[cornerIndices["BR"]], 5, purple, 15);
+		polylines(img_copy, edges[0].edge, 0, blue, line_thickness);
+		polylines(img_copy, edges[1].edge, 0, red, line_thickness);
+		polylines(img_copy, edges[2].edge, 0, green, line_thickness);
+		polylines(img_copy, edges[3].edge, 0, purple, line_thickness);
+		circle(img_copy, outline[cornerIndices["TL"]], draw_point_size, blue, -1);
+		circle(img_copy, outline[cornerIndices["TR"]], draw_point_size, red, -1);
+		circle(img_copy, outline[cornerIndices["BL"]], draw_point_size, purple, -1);
+		circle(img_copy, outline[cornerIndices["BR"]], draw_point_size, green, -1);
 		imshow("contours", img_copy);
 		waitKey(0);
 	}
@@ -503,7 +506,7 @@ void PuzzlePiece::process(bool verbose) {
 		}
 		img_copy = img.clone();
 		for(int i = 0; i < 4; i++) {
-			if(!edges[i].isFlat) drawContours(img_copy, edge_vector, i, colors[i], 5);
+			if(!edges[i].isFlat) drawContours(img_copy, edge_vector, i, colors[i], line_thickness);
 		}
 		imshow("contours", img_copy);
 		waitKey(0);
